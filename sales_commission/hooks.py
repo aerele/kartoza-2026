@@ -2,13 +2,14 @@ app_name = "sales_commission"
 app_title = "Sales Commission"
 app_publisher = "Aerele"
 app_description = "Sales commission calculation on Sales Orders and Invoices"
-app_email = "sowmyaarunachalam57@gmail.com"
+app_email = "sowmya@aerele.in"
 app_license = "mit"
 
 # Apps
 # ------------------
 
 # required_apps = []
+required_apps = ["erpnext", "hrms", "kartoza"]
 
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
@@ -44,6 +45,10 @@ app_license = "mit"
 
 # include js in doctype views
 # doctype_js = {"doctype" : "public/js/doctype.js"}
+doctype_js = {
+	"Sales Order": "public/js/commission.js",
+	"Sales Invoice": "public/js/commission.js",
+}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -84,6 +89,8 @@ app_license = "mit"
 
 # before_install = "sales_commission.install.before_install"
 # after_install = "sales_commission.install.after_install"
+after_install = "sales_commission.setup.install.after_install"
+after_migrate = "sales_commission.setup.install.after_migrate"
 
 # Uninstallation
 # ------------
@@ -162,6 +169,49 @@ app_license = "mit"
 # 	}
 # }
 
+doc_events = {
+	"Item": {"validate": "sales_commission.utils.rates.validate_item_percent"},
+	"Advance Payment Ledger Entry": {"on_update": "sales_commission.utils.sync.sync_on_advance"},
+	"Payment Entry": {
+		"on_submit": "sales_commission.utils.sync.sync_on_payment",
+		"on_cancel": "sales_commission.utils.sync.sync_on_payment",
+	},
+	"Journal Entry": {
+		"on_submit": "sales_commission.utils.sync.sync_on_reconciliation",
+		"on_cancel": "sales_commission.utils.sync.sync_on_reconciliation",
+	},
+	"Salary Slip": {
+		"on_submit": "sales_commission.utils.payroll.stamp_ledger_on_submit",
+		"on_cancel": "sales_commission.utils.payroll.release_ledger_on_cancel",
+	},
+	"Sales Order": {
+		"validate": [
+			"sales_commission.utils.sales_team.validate_sales_person_employee",
+			"sales_commission.utils.validation.calculate_commission",
+		],
+		"before_update_after_submit": [
+			"sales_commission.utils.sales_team.validate_sales_person_employee",
+			"sales_commission.utils.validation.update_commission_after_submit",
+		],
+		"on_change": "sales_commission.utils.sync.sync_on_change",
+	},
+	"Sales Invoice": {
+		"validate": [
+			"sales_commission.utils.override.validate_override",
+			"sales_commission.utils.sales_team.validate_sales_person_employee",
+			"sales_commission.utils.validation.calculate_commission",
+		],
+		"before_update_after_submit": [
+			"sales_commission.utils.override.validate_override",
+			"sales_commission.utils.sales_team.validate_sales_person_employee",
+			"sales_commission.utils.validation.update_commission_after_submit",
+		],
+		"on_change": "sales_commission.utils.sync.sync_on_change",
+		"on_submit": "sales_commission.utils.sync.sync_on_invoice",
+		"on_cancel": "sales_commission.utils.sync.sync_on_invoice",
+	},
+}
+
 # Scheduled Tasks
 # ---------------
 
@@ -210,6 +260,12 @@ app_license = "mit"
 # -----------------------------------------------------------
 
 # ignore_links_on_delete = ["Communication", "ToDo"]
+
+override_doctype_class = {
+	"Salary Slip": "sales_commission.overrides.salary_slip.CommissionSalarySlip",
+}
+
+ignore_links_on_delete = ["Commission Ledger"]
 
 # Request Events
 # ----------------

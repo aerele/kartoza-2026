@@ -1,0 +1,366 @@
+{
+ "actions": [],
+ "creation": "2026-11-14 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "entry_section",
+  "posting_date",
+  "sales_person",
+  "employee",
+  "entry_type",
+  "commission_amount",
+  "cb1",
+  "reference_doctype",
+  "reference_name",
+  "payment_doctype",
+  "payment_name",
+  "customer",
+  "source_section",
+  "classification",
+  "commission_percent",
+  "multiplier",
+  "fiscal_year",
+  "status",
+  "is_cancelled",
+  "salary_slip",
+  "cb2",
+  "sales_date",
+  "payment_date",
+  "company",
+  "item_code",
+  "item_group",
+  "reference_row",
+  "credit_note",
+  "reverses_entry",
+  "calc_section",
+  "paid_share",
+  "currency",
+  "earned_amount",
+  "cb3",
+  "exchange_rate",
+  "base_commission",
+  "allocated_percentage",
+  "target_section",
+  "cb4",
+  "running_total_before",
+  "running_total_after"
+ ],
+ "fields": [
+  {
+   "fieldname": "entry_section",
+   "fieldtype": "Section Break",
+   "label": "Entry"
+  },
+  {
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "label": "Posting Date",
+   "read_only": 1,
+   "in_standard_filter": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "sales_person",
+   "fieldtype": "Link",
+   "label": "Sales Person",
+   "read_only": 1,
+   "options": "Sales Person",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "label": "Employee",
+   "read_only": 1,
+   "options": "Employee"
+  },
+  {
+   "fieldname": "entry_type",
+   "fieldtype": "Select",
+   "label": "Entry Type",
+   "read_only": 1,
+   "options": "Earned\nAdvance Adjustment\nReversal\nCredit Note Deduction\nOverride Reversal",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "commission_amount",
+   "fieldtype": "Currency",
+   "label": "Commission Amount (Company Currency)",
+   "read_only": 1,
+   "options": "Company:company:default_currency",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "cb1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Link",
+   "label": "Sales Transaction Type",
+   "read_only": 1,
+   "options": "DocType"
+  },
+  {
+   "fieldname": "reference_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Reference No",
+   "read_only": 1,
+   "options": "reference_doctype",
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "payment_doctype",
+   "fieldtype": "Link",
+   "label": "Payment Type",
+   "read_only": 1,
+   "options": "DocType"
+  },
+  {
+   "fieldname": "payment_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Payment No",
+   "read_only": 1,
+   "options": "payment_doctype"
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "label": "Customer",
+   "read_only": 1,
+   "options": "Customer",
+   "in_standard_filter": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "source_section",
+   "fieldtype": "Section Break",
+   "label": "Commission"
+  },
+  {
+   "fieldname": "classification",
+   "fieldtype": "Select",
+   "label": "Classification",
+   "read_only": 1,
+   "options": "\nNew\nRenewal"
+  },
+  {
+   "fieldname": "commission_percent",
+   "fieldtype": "Percent",
+   "label": "Commission Percent",
+   "read_only": 1
+  },
+  {
+   "fieldname": "multiplier",
+   "fieldtype": "Float",
+   "label": "Annual Target Multiplier",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fiscal_year",
+   "fieldtype": "Link",
+   "label": "Fiscal Year",
+   "read_only": 1,
+   "options": "Fiscal Year",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "read_only": 1,
+   "no_copy": 1,
+   "options": "Advance\nMoved to Invoice\nEarned\nTo Deduct\nPaid\nDeducted\nCancelled",
+   "in_list_view": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "is_cancelled",
+   "fieldtype": "Check",
+   "label": "Is Cancelled",
+   "default": "0",
+   "read_only": 1,
+   "no_copy": 1,
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "salary_slip",
+   "fieldtype": "Link",
+   "label": "Salary Slip",
+   "read_only": 1,
+   "no_copy": 1,
+   "options": "Salary Slip",
+   "in_standard_filter": 1
+  },
+  {
+   "fieldname": "cb2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sales_date",
+   "fieldtype": "Date",
+   "label": "Sales Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "payment_date",
+   "fieldtype": "Date",
+   "label": "Payment Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "read_only": 1,
+   "options": "Company"
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "label": "Item Code",
+   "read_only": 1,
+   "options": "Item"
+  },
+  {
+   "fieldname": "item_group",
+   "fieldtype": "Link",
+   "label": "Item Group",
+   "read_only": 1,
+   "options": "Item Group"
+  },
+  {
+   "fieldname": "reference_row",
+   "fieldtype": "Data",
+   "label": "Reference Row",
+   "read_only": 1
+  },
+  {
+   "fieldname": "credit_note",
+   "fieldtype": "Link",
+   "label": "Credit Note",
+   "read_only": 1,
+   "options": "Sales Invoice"
+  },
+  {
+   "fieldname": "reverses_entry",
+   "fieldtype": "Link",
+   "label": "Reverses Entry",
+   "read_only": 1,
+   "options": "Commission Ledger"
+  },
+  {
+   "fieldname": "calc_section",
+   "fieldtype": "Section Break",
+   "label": "Calculation"
+  },
+  {
+   "fieldname": "paid_share",
+   "fieldtype": "Float",
+   "label": "Share of Invoice Paid",
+   "read_only": 1,
+   "precision": "9"
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "read_only": 1,
+   "options": "Currency"
+  },
+  {
+   "fieldname": "earned_amount",
+   "fieldtype": "Currency",
+   "label": "Earned Amount",
+   "read_only": 1,
+   "options": "currency"
+  },
+  {
+   "fieldname": "cb3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "exchange_rate",
+   "fieldtype": "Float",
+   "label": "Exchange Rate",
+   "read_only": 1,
+   "precision": "9"
+  },
+  {
+   "fieldname": "base_commission",
+   "fieldtype": "Currency",
+   "label": "Base Commission (Before Multiplier)",
+   "read_only": 1,
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "allocated_percentage",
+   "fieldtype": "Percent",
+   "label": "Allocated Percentage",
+   "read_only": 1
+  },
+  {
+   "fieldname": "target_section",
+   "fieldtype": "Section Break",
+   "label": "Annual Target"
+  },
+  {
+   "fieldname": "cb4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "running_total_before",
+   "fieldtype": "Currency",
+   "label": "Year-to-Date Sales (Before Transaction)",
+   "read_only": 1,
+   "options": "Company:company:default_currency"
+  },
+  {
+   "fieldname": "running_total_after",
+   "fieldtype": "Currency",
+   "label": "Year-to-Date Sales (After Transaction)",
+   "read_only": 1,
+   "options": "Company:company:default_currency"
+  }
+ ],
+ "index_web_pages_for_search": 0,
+ "links": [],
+ "modified": "2026-11-14 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Sales Commission",
+ "name": "Commission Ledger",
+ "naming_rule": "Random",
+ "autoname": "hash",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "System Manager"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "Accounts Manager"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "Accounts User"
+  },
+  {
+   "read": 1,
+   "report": 1,
+   "export": 1,
+   "role": "Sales Manager"
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
