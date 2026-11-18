@@ -1,8 +1,14 @@
 import frappe
 from frappe.utils import flt, getdate
 
-from sales_commission.utils.ledger_rows import PRECISION, apportion, multiplier_groups
-from sales_commission.utils.line_amounts import LineAmounts
+from sales_commission.utils.ledger_rows import (
+	PRECISION,
+	apportion,
+	multiplier_groups,
+	piece_weights,
+	top_first,
+)
+from sales_commission.utils.line_factors import LineFactors
 
 
 class LedgerWriter:
@@ -14,7 +20,7 @@ class LedgerWriter:
 		self.ledger = ledger
 		self.escalator = escalator
 		self.settings = settings
-		self.line_amounts = LineAmounts(doctype, name)
+		self.line_factors = LineFactors(doctype, name)
 
 	def cancel_key(self, entry):
 		"""Unpaid rows are marked cancelled like a GL Entry, rows already on a slip get a normal reversal."""
@@ -68,6 +74,7 @@ class LedgerWriter:
 			is_cancelled=1,
 		)
 		self.escalator.stamp(row, flt(-old.recognised, PRECISION))
+		self.line_factors.set_net_amounts(row)
 		frappe.get_doc(row).insert(ignore_permissions=True)
 
 	def post_reversal(self, entry, old, diff_earned, diff_paid, kind, date, salary_slip=None):
@@ -76,28 +83,53 @@ class LedgerWriter:
 		paid_fraction = self.fraction(diff_paid, old.paid, diff_earned, old.earned)
 		groups = [g for g in multiplier_groups(old.rows) if self.holds_value(g)]
 		groups = groups or multiplier_groups([old.latest])
-		earned = self.part_amounts(diff_earned, base_fraction, [g.earned for g in groups])
-		paid = self.part_amounts(diff_paid, paid_fraction, [g.paid for g in groups])
-		for index, group in enumerate(groups):
+		parts = self.reversal_parts(groups, diff_earned, diff_paid, base_fraction, paid_fraction)
+		for group, earned, paid, base, zar, sales in parts:
 			source = group.source
 			row = self.base_row(entry)
 			row.update(
 				entry_type=kind,
 				posting_date=date or getdate(),
 				reverses_entry=source.name,
-				earned_amount=earned[index],
-				paid_share=paid[index],
+				earned_amount=earned,
+				paid_share=paid,
 				exchange_rate=source.exchange_rate,
-				base_commission=flt(group.base * base_fraction, PRECISION),
-				commission_amount=flt(group.zar * base_fraction, PRECISION),
+				base_commission=base,
+				commission_amount=zar,
 				multiplier=group.multiplier,
 				fiscal_year=source.fiscal_year,
 				sales_date=source.sales_date,
 				payment_date=source.payment_date,
 				salary_slip=salary_slip,
 			)
-			self.escalator.stamp(row, flt(group.recognised * paid_fraction, PRECISION))
+			self.escalator.stamp(row, sales)
 			self.insert(row)
+
+	def reversal_parts(self, groups, diff_earned, diff_paid, base_fraction, paid_fraction):
+		"""(group, earned, paid, base, zar, sales) per row: a split key is taken back from its top part first."""
+		sales = flt(sum(g.recognised for g in groups) * paid_fraction, PRECISION)
+		rooms = [max(g.recognised * (1 if sales < 0 else -1), 0) for g in groups]
+		pieces = top_first([g.multiplier for g in groups], rooms, sales) if len(groups) > 1 else []
+		if not pieces:
+			earned = self.part_amounts(diff_earned, base_fraction, [g.earned for g in groups])
+			paid = self.part_amounts(diff_paid, paid_fraction, [g.paid for g in groups])
+			return [
+				(
+					g,
+					earned[i],
+					paid[i],
+					flt(g.base * base_fraction, PRECISION),
+					flt(g.zar * base_fraction, PRECISION),
+					flt(g.recognised * paid_fraction, PRECISION),
+				)
+				for i, g in enumerate(groups)
+			]
+		weights = {name: piece_weights(groups, pieces, name) for name in ("earned", "paid", "base", "zar")}
+		earned = apportion(diff_earned, weights["earned"])
+		paid = apportion(diff_paid, weights["paid"])
+		base = apportion(flt(sum(g.base for g in groups) * base_fraction, PRECISION), weights["base"])
+		zar = apportion(flt(sum(g.zar for g in groups) * base_fraction, PRECISION), weights["zar"])
+		return [(groups[i], earned[n], paid[n], base[n], zar[n], take) for n, (i, take) in enumerate(pieces)]
 
 	def part_amounts(self, diff, fraction, held):
 		"""The change split over the multipliers' rows; everything held goes back when the fraction is -1."""
@@ -116,7 +148,6 @@ class LedgerWriter:
 		return max(ratio, -1)
 
 	def base_row(self, entry):
-		net, base_net = self.line_amounts.get(entry.reference_row, entry.credit_note) or (0, 0)
 		return frappe._dict(
 			doctype="Commission Ledger",
 			company=entry.company,
@@ -135,8 +166,6 @@ class LedgerWriter:
 			classification=entry.classification,
 			commission_percent=entry.commission_percent,
 			currency=entry.currency,
-			net_amount=net,
-			base_net_amount=base_net,
 			sales_date=entry.get("sales_date"),
 			payment_date=entry.get("payment_date"),
 			multiplier=1.0,
@@ -144,6 +173,7 @@ class LedgerWriter:
 		)
 
 	def insert(self, row):
+		self.line_factors.set_net_amounts(row)
 		doc = frappe.get_doc(row)
 		doc.insert(ignore_permissions=True)
 		self.ledger.add(doc.as_dict())

@@ -4,6 +4,7 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
+from frappe.utils import flt
 
 from sales_commission.utils.ledger_status import status_of
 
@@ -11,6 +12,8 @@ from sales_commission.utils.ledger_status import status_of
 class CommissionLedger(Document):
 	def before_insert(self):
 		self.status = status_of(self)
+		# the sales this row adds to the year: its share of the sale, which the commission is worked out on
+		self.eligible_amount = flt(flt(self.running_total_after) - flt(self.running_total_before), 2)
 
 	def validate(self):
 		if not self.is_new():

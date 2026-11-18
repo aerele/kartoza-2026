@@ -70,7 +70,7 @@ def line_fields(insert_after):
 		{
 			**common,
 			"fieldname": "target_multiplier",
-			"label": "Target Multiplier",
+			"label": "Annual Target Escalator",
 			"fieldtype": "Data",
 			"insert_after": "base_commission_amount",
 		},

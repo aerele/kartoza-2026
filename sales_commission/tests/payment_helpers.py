@@ -160,6 +160,19 @@ def invoice_from_order(order, quantities=None, date=None, submit=True):
 	return invoice
 
 
+def refund(note, amount=None, date=None):
+	"""A Pay Payment Entry that refunds a credit note, all of it or the amount."""
+	entry = get_payment_entry(
+		"Sales Invoice", note.name, party_amount=-abs(amount) if amount else None, bank_account=make_bank()
+	)
+	entry.posting_date = date or nowdate()
+	entry.reference_no = unique("REF")
+	entry.reference_date = entry.posting_date
+	entry.insert(ignore_permissions=True)
+	entry.submit()
+	return entry
+
+
 def make_credit_note(invoice, lines=None, date=None, submit=True):
 	"""Return against an invoice. lines: {row index: qty to return}, default all."""
 	from erpnext.accounts.doctype.sales_invoice.sales_invoice import make_sales_return

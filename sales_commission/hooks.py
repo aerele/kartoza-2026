@@ -175,12 +175,24 @@ doc_events = {
 	"Customer": {"validate": "sales_commission.utils.sales_team.validate_sales_person_not_group"},
 	"Advance Payment Ledger Entry": {"on_update": "sales_commission.utils.sync.sync_on_advance"},
 	"Payment Entry": {
-		"on_submit": "sales_commission.utils.sync.sync_on_payment",
-		"on_cancel": "sales_commission.utils.sync.sync_on_payment",
+		"on_submit": [
+			"sales_commission.utils.sync.sync_on_payment",
+			"sales_commission.utils.refunds.stamp_refund_on_payment",
+		],
+		"on_cancel": [
+			"sales_commission.utils.sync.sync_on_payment",
+			"sales_commission.utils.refunds.stamp_refund_on_payment",
+		],
 	},
 	"Journal Entry": {
-		"on_submit": "sales_commission.utils.sync.sync_on_reconciliation",
-		"on_cancel": "sales_commission.utils.sync.sync_on_reconciliation",
+		"on_submit": [
+			"sales_commission.utils.sync.sync_on_reconciliation",
+			"sales_commission.utils.refunds.stamp_refund_on_journal",
+		],
+		"on_cancel": [
+			"sales_commission.utils.sync.sync_on_reconciliation",
+			"sales_commission.utils.refunds.stamp_refund_on_journal",
+		],
 	},
 	"Salary Slip": {
 		"on_submit": "sales_commission.utils.payroll.stamp_ledger_on_submit",
@@ -319,4 +331,3 @@ ignore_links_on_delete = ["Commission Ledger"]
 # ------------
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
-

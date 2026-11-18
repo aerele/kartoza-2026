@@ -5,6 +5,7 @@ from sales_commission.utils.expected import ExpectedEntries
 from sales_commission.utils.line_fields import has_stored_commission
 from sales_commission.utils.order_links import SHOPPING_CART
 from sales_commission.utils.poster import LedgerPoster
+from sales_commission.utils.refunds import stamp_refunds
 from sales_commission.utils.standalone import StandaloneNoteEntries
 
 SYNCED_DOCTYPES = ("Sales Order", "Sales Invoice")
@@ -97,6 +98,7 @@ class DocumentSync:
 			return
 		entries = StandaloneNoteEntries(doc) if doc.get("is_return") else ExpectedEntries(doc)
 		poster.post(entries.build(), entries.pending)
+		stamp_refunds(poster.ledger.credit_notes())
 
 	def is_cart(self, doc):
 		return doc.doctype == "Sales Order" and doc.order_type == SHOPPING_CART

@@ -7,11 +7,13 @@ PRECISION = 2
 
 
 def row_key(row):
+	"""The key of a row. A credit note's rows ignore the payment fields, they only show its refund."""
+	note = row.credit_note or ""
 	return (
 		row.reference_row,
-		row.payment_doctype or "",
-		row.payment_name or "",
-		row.credit_note or "",
+		"" if note else row.payment_doctype or "",
+		"" if note else row.payment_name or "",
+		note,
 		row.sales_person or "",
 	)
 
@@ -22,6 +24,31 @@ def apportion(total, weights):
 	shares = [w / whole if whole else 1 / len(weights) for w in weights]
 	parts = [flt(total * share, PRECISION) for share in shares[:-1]]
 	return [*parts, flt(total - sum(parts), PRECISION)]
+
+
+def top_first(multipliers, rooms, sales):
+	"""(index, amount) pieces taking `sales` from the multipliers, in the order the pieces must be posted.
+
+	A reduction (sales < 0) comes off the highest multiplier first, since that part is the highest in the
+	year-to-date; a give-back (sales > 0) fills the lowest first. `rooms` is what each can give or take."""
+	sign = 1 if sales > 0 else -1
+	order = sorted(range(len(rooms)), key=lambda i: multipliers[i], reverse=sales < 0)
+	order = [i for i in order if rooms[i] > 0]
+	left = abs(sales)
+	pieces = []
+	for i in order:
+		take = min(left, rooms[i])
+		if take > 0:
+			pieces.append([i, take])
+		left -= take
+	if pieces:
+		pieces[-1][1] += left  # the last piece takes what the rooms miss
+	return [(i, sign * flt(take, PRECISION)) for i, take in pieces]
+
+
+def piece_weights(groups, pieces, name):
+	"""Weight of each piece for an amount: the part of its multiplier's group that the piece takes."""
+	return [abs(take) * abs(groups[i][name]) / abs(groups[i].recognised) for i, take in pieces]
 
 
 def multiplier_groups(rows):
@@ -69,6 +96,10 @@ class LedgerRows:
 			del self.by_key[key]
 		for row in rows:
 			self.by_line[(row.reference_row, row.sales_person or "")].remove(row)
+
+	def credit_notes(self):
+		"""Names of the credit notes that have live rows."""
+		return {r.credit_note for rows in self.by_key.values() for r in rows if r.credit_note}
 
 	def keys(self):
 		return list(self.by_key)

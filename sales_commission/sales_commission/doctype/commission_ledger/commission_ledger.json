@@ -32,7 +32,9 @@
   "currency",
   "net_amount",
   "base_net_amount",
+  "eligible_amount",
   "classification",
+  "commission_factor",
   "commission_percent",
   "allocated_percentage",
   "cb3",
@@ -236,10 +238,24 @@
    "read_only": 1
   },
   {
+   "fieldname": "eligible_amount",
+   "fieldtype": "Currency",
+   "label": "Eligible Amount (Company Currency)",
+   "options": "Company:company:default_currency",
+   "read_only": 1,
+   "description": "Sales value eligible for commission in this row"
+  },
+  {
    "fieldname": "classification",
    "fieldtype": "Select",
    "label": "Classification",
    "options": "\nNew\nRenewal",
+   "read_only": 1
+  },
+  {
+   "fieldname": "commission_factor",
+   "fieldtype": "Float",
+   "label": "Classification Factor",
    "read_only": 1
   },
   {
@@ -354,7 +370,7 @@
   }
  ],
  "links": [],
- "modified": "2026-11-17 19:02:05.164285",
+ "modified": "2026-11-18 17:06:20.059045",
  "modified_by": "Administrator",
  "module": "Sales Commission",
  "name": "Commission Ledger",

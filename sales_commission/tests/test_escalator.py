@@ -1,7 +1,10 @@
+import frappe
 from frappe.utils import add_days, flt
 
 from sales_commission.tests import helpers as h
 from sales_commission.tests import payment_helpers as p
+from sales_commission.tests import payroll_helpers as pr
+from sales_commission.utils.escalator import year_to_date_sales
 
 
 class TestEscalator(h.CommissionTestCase):
@@ -18,10 +21,12 @@ class TestEscalator(h.CommissionTestCase):
 		self.day += 1
 		return add_days(h.date_in(0, "04-01"), self.day)
 
-	def paid(self, amount, date=None, percent=10):
+	def paid(self, amount, date=None, percent=10, qty=1):
 		date = date or self.next_date()
 		item = h.make_item(self.group, percent=percent)
-		invoice = h.make_invoice(self.customer, [(item, 1, amount)], team=[(self.person, 100)], date=date)
+		invoice = h.make_invoice(
+			self.customer, [(item, qty, amount / qty)], team=[(self.person, 100)], date=date
+		)
 		return p.pay(invoice, amount, date=date), invoice
 
 	def last(self, invoice):
@@ -60,8 +65,11 @@ class TestEscalator(h.CommissionTestCase):
 		self.assertEqual(self.shape(invoices[2]), [(1.5, 500000, 700000, 15000)])
 		total = sum(r.commission_amount for i in invoices for r in h.ledger(i.name))
 		self.assertEqual(flt(total, 2), 42500)
+		self.assertEqual({flt(r.commission_factor) for r in h.ledger(invoices[1].name)}, {1})
+		eligible = [flt(r.eligible_amount) for r in h.ledger(invoices[1].name)]
+		self.assertEqual(sorted(eligible), [100000, 250000])
 
-	def test_credit_note_on_a_crossing_invoice_takes_back_from_both_parts(self):
+	def test_full_credit_note_on_a_crossing_invoice_takes_back_both_parts_top_first(self):
 		self.target(1500)
 		self.paid(1000)
 		_, second = self.paid(1000)
@@ -70,8 +78,9 @@ class TestEscalator(h.CommissionTestCase):
 		rows = [r for r in h.ledger(second.name) if r.entry_type == "Credit Note Deduction"]
 		self.assertEqual(
 			[(flt(r.multiplier), flt(r.commission_amount), flt(r.earned_amount)) for r in rows],
-			[(1, -50, -50), (1.5, -75, -50)],
+			[(1.5, -75, -50), (1, -50, -50)],
 		)
+		self.assertEqual([flt(r.eligible_amount) for r in rows], [-500, -500])
 		self.assertEqual(flt(sum(r.commission_amount for r in h.ledger(second.name))), 0)
 		self.assertEqual(
 			flt(sum(r.running_total_after - r.running_total_before for r in h.ledger(second.name))), 0
@@ -200,3 +209,102 @@ class TestEscalator(h.CommissionTestCase):
 		_, next_one = self.paid(1000, date=add_days(this_year, 1))
 		row = self.last(next_one)
 		self.assertEqual((flt(row.multiplier), flt(row.running_total_before)), (1, 1000))
+
+	def kumar(self):
+		"""Target 400,000 at 5%: 150,000 earned, then 350,000 split 250,000 at 1 and 100,000 at 1.5."""
+		self.target(400000)
+		self.paid(150000, percent=5)
+		return self.paid(350000, percent=5, qty=35)[1]
+
+	def deductions(self, invoice):
+		"""(multiplier, eligible sales, earned, commission, running total before, after) of each live deduction."""
+		return [
+			(
+				flt(r.multiplier),
+				flt(r.eligible_amount),
+				flt(r.earned_amount),
+				flt(r.commission_amount),
+				flt(r.running_total_before),
+				flt(r.running_total_after),
+			)
+			for r in h.ledger(invoice.name)
+			if r.entry_type == "Credit Note Deduction"
+		]
+
+	def year_to_date(self):
+		return flt(year_to_date_sales(self.person, h.fiscal_year_of(h.date_in(0, "04-01"))))
+
+	def test_a_return_comes_off_the_part_above_the_target_first(self):
+		invoice = self.kumar()
+		p.make_credit_note(invoice, lines={0: 15}, date=add_days(self.next_date(), 1))
+		self.assertEqual(
+			self.deductions(invoice),
+			[(1.5, -100000, -5000, -7500, 500000, 400000), (1, -50000, -2500, -2500, 400000, 350000)],
+		)
+		self.assertEqual(self.year_to_date(), 350000)
+		total = sum(r.commission_amount for r in h.ledger(sales_person=self.person))
+		self.assertEqual(flt(total, 2), 17500)  # 5% of the net sales 350,000
+
+	def test_a_small_return_is_taken_entirely_above_the_target(self):
+		invoice = self.kumar()
+		p.make_credit_note(invoice, lines={0: 6}, date=add_days(self.next_date(), 1))
+		self.assertEqual(self.deductions(invoice), [(1.5, -60000, -3000, -4500, 500000, 440000)])
+
+	def test_full_return_of_the_crossing_invoice_takes_back_both_parts(self):
+		invoice = self.kumar()
+		p.make_credit_note(invoice, date=add_days(self.next_date(), 1))
+		self.assertEqual(
+			self.deductions(invoice),
+			[(1.5, -100000, -5000, -7500, 500000, 400000), (1, -250000, -12500, -12500, 400000, 150000)],
+		)
+		self.assertEqual(self.year_to_date(), 150000)
+
+	def test_later_returns_continue_where_the_earlier_one_stopped(self):
+		invoice = self.kumar()
+		p.make_credit_note(invoice, lines={0: 6}, date=add_days(self.next_date(), 1))
+		p.make_credit_note(invoice, lines={0: 9}, date=add_days(self.next_date(), 2))
+		self.assertEqual(
+			self.deductions(invoice),
+			[
+				(1.5, -60000, -3000, -4500, 500000, 440000),
+				(1.5, -40000, -2000, -3000, 440000, 400000),
+				(1, -50000, -2500, -2500, 400000, 350000),
+			],
+		)
+		self.assertEqual(self.year_to_date(), 350000)
+
+	def test_cancelled_credit_note_gives_back_exactly_its_pieces(self):
+		invoice = self.kumar()
+		before = self.shape(invoice)
+		note = p.make_credit_note(invoice, lines={0: 15}, date=add_days(self.next_date(), 1))
+		note.cancel()
+		self.assertEqual(self.deductions(invoice), [])
+		self.assertEqual(self.shape(invoice), before)
+		self.assertEqual(self.year_to_date(), 500000)
+
+	def test_payment_cancelled_after_payroll_is_taken_back_top_first_per_part(self):
+		pr.make_component(pr.COMMISSION_COMPONENT, "TSC", remove_if_zero=1)
+		pr.ensure_holiday_list()
+		pr.ensure_payroll_period()
+		h.set_settings(commission_salary_component=pr.COMMISSION_COMPONENT)
+		employee = frappe.db.get_value("Sales Person", self.person, "employee")
+		pr.make_structure_assignment(employee)
+		self.target(400000)
+		self.paid(150000, percent=5)
+		payment, invoice = self.paid(350000, percent=5)
+		pr.make_slip(employee, h.date_in(0, "04-01"), h.date_in(0, "04-30"), submit=True)
+		payment.cancel()
+		rows = [r for r in h.ledger(invoice.name) if r.entry_type == "Reversal"]
+		self.assertEqual(
+			[
+				(
+					flt(r.multiplier),
+					flt(r.commission_amount),
+					flt(r.running_total_before),
+					flt(r.running_total_after),
+				)
+				for r in rows
+			],
+			[(1.5, -7500, 500000, 400000), (1, -12500, 400000, 150000)],
+		)
+		self.assertEqual(self.year_to_date(), 150000)
