@@ -42,7 +42,7 @@ class LedgerPoster:
 		result = list(expected)
 		for key in self.ledger.keys():
 			row = self.ledger.first_row(key) if key not in known else None
-			if not row or (row.payment_doctype, row.payment_name) in pending:
+			if not row or (not row.credit_note and (row.payment_doctype, row.payment_name) in pending):
 				continue
 			probe = Expected({f: row.get(f) for f in CARRIED_FIELDS}, allocated=row.allocated_percentage)
 			probe.update(
@@ -60,7 +60,7 @@ class LedgerPoster:
 		"""The key vanished because its payment, credit note or the document itself was cancelled."""
 		return (
 			self.reference_cancelled
-			or self.docstatus(probe.payment_doctype, probe.payment_name) == 2
+			or (not probe.credit_note and self.docstatus(probe.payment_doctype, probe.payment_name) == 2)
 			or self.docstatus("Sales Invoice", probe.credit_note) == 2
 		)
 

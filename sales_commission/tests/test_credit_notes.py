@@ -4,6 +4,7 @@ from frappe.utils import add_days, flt, getdate, nowdate
 
 from sales_commission.tests import helpers as h
 from sales_commission.tests import payment_helpers as p
+from sales_commission.utils.sync import sync_document
 
 
 class TestCreditNotes(h.CommissionTestCase):
@@ -234,3 +235,69 @@ class TestCreditNotes(h.CommissionTestCase):
 		history = h.ledger(note.name, is_cancelled=1)
 		self.assertEqual(flt(sum(r.commission_amount for r in history), 2), 0)
 		self.assertEqual(len(history), 2)
+
+	def deduction_rows(self, invoice):
+		return [r for r in h.ledger(invoice.name) if r.entry_type == "Credit Note Deduction"]
+
+	def refund_of(self, invoice):
+		"""(payment doctype, payment name, payment date) shown on the deduction rows, one value."""
+		return {(r.payment_doctype, r.payment_name, r.payment_date) for r in self.deduction_rows(invoice)}
+
+	def paid_invoice_with_note(self):
+		invoice = self.spread_invoice()
+		p.pay(invoice, 300, date=add_days(nowdate(), -4))
+		note = p.make_credit_note(invoice, {0: 1}, date=add_days(nowdate(), -3))
+		return invoice, note
+
+	def test_refund_shows_on_the_deduction_rows_without_changing_them(self):
+		invoice, note = self.paid_invoice_with_note()
+		self.assertEqual(self.refund_of(invoice), {(None, None, None)})
+		before = [(r.name, r.commission_amount, r.entry_type) for r in h.ledger(invoice.name)]
+		refund = p.refund(note, date=add_days(nowdate(), -1))
+		self.assertEqual(refund.payment_type, "Pay")
+		self.assertEqual(
+			self.refund_of(invoice), {("Payment Entry", refund.name, getdate(refund.posting_date))}
+		)
+		self.assertEqual(
+			before, [(r.name, r.commission_amount, r.entry_type) for r in h.ledger(invoice.name)]
+		)
+		sync_document("Sales Invoice", invoice.name)
+		self.assertEqual(
+			before, [(r.name, r.commission_amount, r.entry_type) for r in h.ledger(invoice.name)]
+		)
+
+	def test_the_latest_refund_is_shown_and_cancelling_goes_back(self):
+		invoice, note = self.paid_invoice_with_note()
+		first = p.refund(note, 40, date=add_days(nowdate(), -2))
+		second = p.refund(note, 40, date=add_days(nowdate(), -1))
+		self.assertEqual({r[1] for r in self.refund_of(invoice)}, {second.name})
+		second.cancel()
+		self.assertEqual({r[1] for r in self.refund_of(invoice)}, {first.name})
+		first.cancel()
+		self.assertEqual(self.refund_of(invoice), {(None, None, None)})
+		self.assertEqual(len(self.deduction_rows(invoice)), 1)
+
+	def test_note_settled_against_another_invoice_shows_the_journal_entry(self):
+		invoice, note = self.paid_invoice_with_note()
+		other = h.make_invoice(
+			invoice.customer,
+			[(h.make_item(self.group), 1, 100)],
+			team=self.team,
+			date=add_days(nowdate(), -2),
+		)
+		p.reconcile(invoice.customer)
+		journals = frappe.get_all(
+			"Journal Entry Account",
+			filters={"reference_type": "Sales Invoice", "reference_name": note.name, "docstatus": 1},
+			pluck="parent",
+		)
+		self.assertTrue(other and journals)
+		self.assertEqual({r[1] for r in self.refund_of(invoice)}, set(journals))
+		self.assertEqual({r[0] for r in self.refund_of(invoice)}, {"Journal Entry"})
+
+	def test_note_on_an_unpaid_invoice_has_no_deduction_row_to_stamp(self):
+		invoice = self.spread_invoice()
+		note = p.make_credit_note(invoice, {0: 1})
+		self.assertEqual(self.deduction_rows(invoice), [])
+		p.refund(note)
+		self.assertEqual(self.deduction_rows(invoice), [])

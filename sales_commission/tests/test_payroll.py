@@ -72,6 +72,25 @@ class TestPayroll(h.CommissionTestCase):
 		slip.cancel()
 		self.assertEqual(self.statuses(), ["Earned", "To Deduct"])
 
+	def test_refunded_credit_note_is_still_deducted_on_the_slip(self):
+		h.set_settings(include_commission_for_credit_note=1)
+		item = h.make_item(h.make_group(), percent=10)
+		invoice = h.make_invoice(
+			h.make_customer(), [(item, 2, 1000)], date=h.date_in(0, "04-10"), team=[(self.person, 100)]
+		)
+		p.pay(invoice, 2000, date=h.date_in(0, "04-10"))
+		note = p.make_credit_note(invoice, {0: 1}, date=h.date_in(0, "04-12"))
+		refund = p.refund(note, date=h.date_in(0, "04-15"))
+		rows = frappe.get_all(
+			"Commission Ledger",
+			filters={"credit_note": note.name, "is_cancelled": 0},
+			fields=["payment_name", "commission_amount"],
+		)
+		self.assertEqual([(r.payment_name, flt(r.commission_amount)) for r in rows], [(refund.name, -100)])
+		slip = self.april_slip(submit=True)
+		self.assertEqual(flt(pr.commission_row(slip).amount), 100)
+		self.assertEqual(self.statuses(), ["Deducted", "Paid"])
+
 	def test_stamped_rows_are_not_paid_on_another_slip(self):
 		self.pay_invoice(1000, h.date_in(0, "04-10"))
 		self.april_slip(submit=True)
