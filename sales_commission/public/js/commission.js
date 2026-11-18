@@ -237,14 +237,11 @@
 	function show_as_read_only(grid) {
 		grid.static_rows = true;
 		grid.refresh();
-		// selector, row number, edit and column-settings cells; data cells carry a col-xs-N width
-		grid.wrapper.find(".data-row > .col").not("[class*='col-xs-']").hide();
+		// selector, row number, edit and column-settings cells; only the data cells carry a data-fieldname
+		grid.wrapper.find(".data-row > .col").not("[data-fieldname]").hide();
 		// the last column takes the room the hidden cells leave
 		grid.wrapper.find(".data-row").each((i, row) => {
-			$(row)
-				.children("[class*='col-xs-']")
-				.last()
-				.css({ flex: "1 1 0", "max-width": "none" });
+			$(row).children("[data-fieldname]").last().css({ flex: "1 1 0", "max-width": "none" });
 		});
 		grid.wrapper.find(".grid-footer").hide();
 	}
