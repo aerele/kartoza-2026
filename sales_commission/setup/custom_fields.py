@@ -82,7 +82,7 @@ def header_fields(insert_after):
 	totals = {"read_only": 1, "no_copy": 1, "print_hide": 1}
 	return [
 		{
-			"fieldname": "commission_section",
+			"fieldname": "sales_commission_section",
 			"label": "Sales Commission",
 			"fieldtype": "Section Break",
 			"insert_after": insert_after,
@@ -91,7 +91,7 @@ def header_fields(insert_after):
 		{
 			"fieldname": "commission_column_break",
 			"fieldtype": "Column Break",
-			"insert_after": "commission_section",
+			"insert_after": "sales_commission_section",
 		},
 		{
 			**totals,
@@ -141,13 +141,20 @@ def with_module(custom_fields):
 	}
 
 
+# Section holding the Sales Partner commission fields (Sales Invoice moved it in v16)
+STANDARD_COMMISSION_SECTIONS = {
+	"Sales Order": "sales_team_section_break",
+	"Sales Invoice": "commission_section",
+}
+
+
 def hide_standard_commission_section():
 	"""Hide ERPNext's Sales Partner commission section; only the app's own section shows."""
-	for doctype in ("Sales Order", "Sales Invoice"):
-		name = f"{doctype}-sales_team_section_break-hidden"
+	for doctype, fieldname in STANDARD_COMMISSION_SECTIONS.items():
+		name = f"{doctype}-{fieldname}-hidden"
 		if frappe.db.get_value("Property Setter", name, "value") == "1":
 			continue
-		make_property_setter(doctype, "sales_team_section_break", "hidden", 1, "Check")
+		make_property_setter(doctype, fieldname, "hidden", 1, "Check")
 		frappe.db.set_value("Property Setter", name, "module", "Sales Commission")
 
 

@@ -2,7 +2,7 @@
 
 import frappe
 from erpnext.accounts.utils import get_fiscal_year, get_fiscal_years
-from frappe.tests.utils import FrappeTestCase
+from frappe.tests import IntegrationTestCase
 from frappe.utils import add_days, flt, getdate, nowdate
 
 COMPANY = "Commission Test Company"
@@ -20,6 +20,9 @@ def ensure_test_environment():
 	"""Create (once) the ZAR test company, its VAT account, the fiscal years and the currencies."""
 	for currency in ("ZAR", "USD", "EUR"):
 		frappe.db.set_value("Currency", currency, "enabled", 1)
+	if not frappe.db.exists("Warehouse Type", "Transit"):
+		# created by the ERPNext setup wizard; a site set up without it needs it for a new company
+		frappe.get_doc({"doctype": "Warehouse Type", "name": "Transit"}).insert(ignore_permissions=True)
 	if not frappe.db.exists("Company", COMPANY):
 		frappe.get_doc(
 			{
@@ -50,7 +53,7 @@ def ensure_employee_type():
 	"""The kartoza app requires an Employee Type on every Employee."""
 	if frappe.db.exists("Employee Type", EMPLOYEE_TYPE):
 		return
-	frappe.get_doc({"doctype": "Employee Type", "employee_type_name": EMPLOYEE_TYPE}).insert(
+	frappe.get_doc({"doctype": "Employee Type", "employee_type": EMPLOYEE_TYPE}).insert(
 		ignore_permissions=True
 	)
 
@@ -294,7 +297,7 @@ def ledger(reference_name=None, **filters):
 	)
 
 
-class CommissionTestCase(FrappeTestCase):
+class CommissionTestCase(IntegrationTestCase):
 	"""Base class: default settings before every test."""
 
 	@classmethod
