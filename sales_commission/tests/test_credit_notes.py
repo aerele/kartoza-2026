@@ -1,6 +1,6 @@
 import frappe
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import make_sales_return
-from frappe.utils import flt, nowdate
+from frappe.utils import add_days, flt, getdate, nowdate
 
 from sales_commission.tests import helpers as h
 from sales_commission.tests import payment_helpers as p
@@ -16,6 +16,106 @@ class TestCreditNotes(h.CommissionTestCase):
 
 	def total(self, invoice):
 		return flt(sum(r.commission_amount for r in h.ledger(invoice.name)), 2)
+
+	def spread_invoice(self, person=None):
+		"""Consulting 100 (5%), Computer Expenses 100 (no commission), Hosting 100 (5%), one salesperson."""
+		lines = [
+			h.make_item(self.group, percent=5),
+			h.make_item(self.group),
+			h.make_item(self.group, percent=5),
+		]
+		team = [(person or self.person, 100)]
+		return h.make_invoice(
+			h.make_customer(), [(item, 1, 100) for item in lines], team=team, date=add_days(nowdate(), -5)
+		)
+
+	def ytd(self, invoice):
+		rows = h.ledger(invoice.name)
+		return flt(sum(r.running_total_after - r.running_total_before for r in rows), 2)
+
+	def amounts(self, invoice, entry_type=None):
+		rows = [r for r in h.ledger(invoice.name) if not entry_type or r.entry_type == entry_type]
+		return sorted(flt(r.commission_amount, 2) for r in rows)
+
+	def test_return_of_unpaid_line_pays_the_rest_of_the_others(self):
+		invoice = self.spread_invoice()
+		p.pay(invoice, 200, date=add_days(nowdate(), -3))
+		self.assertEqual(self.total(invoice), 6.66)
+		p.make_credit_note(invoice, {1: 1})
+		self.assertEqual(self.total(invoice), 10)
+		catch_up = [r for r in h.ledger(invoice.name) if r.posting_date == getdate(nowdate())]
+		self.assertEqual([flt(r.commission_amount, 2) for r in catch_up], [1.67, 1.67])
+		self.assertEqual({r.entry_type for r in catch_up}, {"Earned"})
+		self.assertEqual(self.ytd(invoice), 200)
+
+	def test_reconciling_the_return_later_changes_nothing(self):
+		invoice = self.spread_invoice()
+		p.pay(invoice, 200, date=add_days(nowdate(), -3))
+		note = p.make_credit_note(invoice, {1: 1}, submit=False)
+		note.update_outstanding_for_self = 1
+		note.save(ignore_permissions=True)
+		note.submit()
+		self.assertEqual(self.total(invoice), 10)
+		count = len(h.ledger(invoice.name))
+		p.reconcile(invoice.customer)
+		self.assertEqual(self.total(invoice), 10)
+		self.assertEqual(len(h.ledger(invoice.name)), count)
+		self.assertEqual(self.ytd(invoice), 200)
+
+	def test_return_of_a_commission_line_after_part_payment(self):
+		invoice = self.spread_invoice()
+		p.pay(invoice, 200)
+		p.make_credit_note(invoice, {0: 1})
+		self.assertEqual(self.total(invoice), 5)
+		self.assertEqual(self.ytd(invoice), 100)
+		by_line = {}
+		for row in h.ledger(invoice.name):
+			by_line[row.reference_row] = by_line.get(row.reference_row, 0) + flt(row.commission_amount)
+		self.assertEqual(
+			(flt(by_line[invoice.items[0].name], 2), flt(by_line[invoice.items[2].name], 2)), (0, 5)
+		)
+
+	def test_return_first_then_pay_the_rest(self):
+		invoice = self.spread_invoice()
+		p.make_credit_note(invoice, {1: 1})
+		self.assertEqual(h.ledger(invoice.name), [])
+		p.pay(invoice, 200)
+		self.assertEqual(self.total(invoice), 10)
+		self.assertEqual(self.ytd(invoice), 200)
+
+	def test_catch_up_is_shared_by_the_payments_in_proportion(self):
+		invoice = self.spread_invoice()
+		first = p.pay(invoice, 100, date=add_days(nowdate(), -3))
+		second = p.pay(invoice, 100, date=add_days(nowdate(), -2))
+		p.make_credit_note(invoice, {1: 1})
+		self.assertEqual(self.total(invoice), 10)
+		for payment in (first, second):
+			rows = [r for r in h.ledger(invoice.name) if r.payment_name == payment.name]
+			self.assertEqual(flt(sum(r.commission_amount for r in rows), 2), 5)
+			self.assertEqual(len(rows), 4)
+
+	def test_cancelled_credit_note_takes_the_catch_up_back(self):
+		invoice = self.spread_invoice()
+		p.pay(invoice, 200)
+		note = p.make_credit_note(invoice, {1: 1})
+		self.assertEqual(self.total(invoice), 10)
+		note.cancel()
+		# each line goes back to the two thirds of its 5 it had earned on the 200 paid: 3.33 + 3.33
+		self.assertEqual(self.total(invoice), 6.66)
+		self.assertEqual(self.ytd(invoice), 133.34)
+
+	def test_catch_up_keeps_the_escalator_multiplier(self):
+		earlier = h.make_invoice(
+			h.make_customer(), [(h.make_item(self.group, percent=5), 1, 1000)], team=self.team
+		)
+		p.pay(earlier, 1000)
+		h.set_target(self.person, h.fiscal_year_of(nowdate()), 500)
+		invoice = self.spread_invoice()
+		p.pay(invoice, 200)
+		p.make_credit_note(invoice, {1: 1})
+		rows = h.ledger(invoice.name)
+		self.assertEqual({flt(r.multiplier) for r in rows}, {1.5})
+		self.assertEqual(self.total(invoice), 15)
 
 	def test_credit_note_after_full_payment(self):
 		customer = h.make_customer("EUR")
@@ -36,7 +136,8 @@ class TestCreditNotes(h.CommissionTestCase):
 		p.pay(invoice, 5000)
 		self.assertEqual(self.total(invoice), 250)
 		p.make_credit_note(invoice, {0: 4})
-		self.assertEqual(self.total(invoice), 150)
+		# the 5000 paid is now 5000 of the 6000 still owed, so the line has earned 5/6 of 300
+		self.assertEqual(self.total(invoice), 250)
 		p.pay(invoice, 1000)
 		self.assertEqual(self.total(invoice), 300)
 
@@ -122,7 +223,11 @@ class TestCreditNotes(h.CommissionTestCase):
 		self.assertEqual([r.entry_type for r in rows], ["Credit Note Deduction"])
 		self.assertEqual((rows[0].credit_note, rows[0].sales_person), (note.name, self.person))
 		self.assertEqual(
-			(flt(rows[0].commission_amount, 2), flt(rows[0].running_total_after - rows[0].running_total_before, 2)), (-138, -2760)
+			(
+				flt(rows[0].commission_amount, 2),
+				flt(rows[0].running_total_after - rows[0].running_total_before, 2),
+			),
+			(-138, -2760),
 		)
 		note.cancel()
 		self.assertEqual(h.ledger(note.name), [])

@@ -30,9 +30,11 @@ def get_line_commission(doc):
 				"commission_note": row.commission_note or "",
 				"commission_amount": flt(row.commission_amount),
 				"base_commission_amount": flt(row.base_commission_amount),
+				"target_multiplier": row.target_multiplier or "",
 			}
 			for row in document.items
 		],
+		"incentives": [flt(row.incentives) for row in document.get("sales_team") or []],
 		"total_commission_amount": flt(document.total_commission_amount),
 		"base_total_commission_amount": flt(document.base_total_commission_amount),
 	}

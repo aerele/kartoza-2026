@@ -2,6 +2,7 @@ import frappe
 from frappe.utils import flt, getdate
 
 from sales_commission.utils.entry import Expected
+from sales_commission.utils.line_fields import plain_amount
 from sales_commission.utils.original_lines import OriginalLines
 from sales_commission.utils.rates import person_ratio
 from sales_commission.utils.reconciled_notes import SettledShares
@@ -35,7 +36,6 @@ class StandaloneNoteEntries:
 	def entry(self, row, person, allocated, remaining):
 		note = self.note
 		date = getdate(note.posting_date)
-		ticked = bool(note.override_deduction)
 		share = allocated / 100 * remaining
 		ratio = person_ratio(row, person)
 		return Expected(
@@ -46,7 +46,7 @@ class StandaloneNoteEntries:
 			item_group=row.item_group,
 			classification=row.commission_classification,
 			commission_percent=row.commission_percent,
-			line_commission=flt(row.commission_amount) * ratio,
+			line_commission=plain_amount(row) * ratio,
 			currency=note.currency,
 			sales_person=person,
 			employee=person and frappe.get_cached_value("Sales Person", person, "employee"),
@@ -60,8 +60,7 @@ class StandaloneNoteEntries:
 			at=(date, note.creation),
 			standalone=True,
 			rate=flt(note.conversion_rate),
-			deduction=0 if ticked else flt(row.commission_amount) * share * ratio,
-			zar=0 if ticked else flt(row.base_commission_amount) * share * ratio,
-			recognised=0 if ticked else flt(row.base_net_amount) * share,
-			override=ticked,
+			deduction=plain_amount(row) * share * ratio,
+			zar=plain_amount(row, base=True) * share * ratio,
+			recognised=flt(row.base_net_amount) * share,
 		)

@@ -12,8 +12,11 @@ ROW_FIELDS = [
 
 
 def get_commission_filters(ledger, slip):
-	"""Conditions of the ledger rows a salary slip pays: its employee and period, not paid on another slip."""
-	return [
+	"""Conditions of the ledger rows a salary slip pays: its employee and period, not paid on another slip.
+
+	Rows of a credit note (deduction and its reversal) count only when the setting is ticked.
+	"""
+	conditions = [
 		ledger.employee == slip.employee,
 		ledger.company == slip.company,
 		ledger.is_cancelled == 0,
@@ -23,6 +26,9 @@ def get_commission_filters(ledger, slip):
 		| (ledger.salary_slip == "")
 		| (ledger.salary_slip == (slip.name or "")),
 	]
+	if not frappe.db.get_single_value("Commission Settings", "include_commission_for_credit_note"):
+		conditions.append((ledger.credit_note.isnull()) | (ledger.credit_note == ""))
+	return conditions
 
 
 def stamp_ledger_on_submit(doc, method=None):
@@ -57,6 +63,21 @@ def update_rows(rows, salary_slip):
 			.where(ledger.name.isin(names))
 			.run()
 		)
+
+
+def latest_slip(slips):
+	"""The salary slip that ends last of these names (None for none)."""
+	names = sorted({name for name in slips if name})
+	if not names:
+		return None
+	latest = frappe.get_all(
+		"Salary Slip",
+		filters={"name": ["in", names], "docstatus": 1},
+		order_by="end_date desc, creation desc",
+		limit=1,
+		pluck="name",
+	)
+	return latest[0] if latest else None
 
 
 def paid_commission(doc):

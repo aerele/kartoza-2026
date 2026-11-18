@@ -93,6 +93,52 @@ class TestLedgerAndSafety(h.CommissionTestCase):
 		self.assertEqual(str(row.sales_date), h.date_in(0, "03-25"))
 		self.assertIsNone(row.payment_date)
 
+	def test_paid_invoice_row_holds_the_line_net_amount(self):
+		invoice = self.paid_invoice()
+		line = invoice.items[0]
+		row = h.ledger(invoice.name)[0]
+		self.assertEqual(flt(row.net_amount), 1000)
+		self.assertEqual(flt(row.net_amount), flt(line.net_amount))
+		self.assertEqual(flt(row.base_net_amount), flt(line.base_net_amount))
+
+	def test_foreign_invoice_row_holds_net_amount_in_both_currencies(self):
+		item = h.make_item(h.make_group(), percent=10)
+		invoice = h.make_invoice(
+			h.make_customer("USD"),
+			[(item, 1, 1000)],
+			team=[(h.make_sales_person(), 100)],
+			currency="USD",
+			rate=17,
+		)
+		p.pay(invoice, 1000, rate=17)
+		row = h.ledger(invoice.name)[0]
+		self.assertEqual(flt(row.net_amount), 1000)
+		self.assertEqual(flt(row.base_net_amount), 17000)
+
+	def test_credit_note_deduction_row_holds_the_note_line_net_amount(self):
+		item = h.make_item(h.make_group(), percent=10)
+		invoice = h.make_invoice(h.make_customer(), [(item, 2, 1000)], team=[(h.make_sales_person(), 100)])
+		p.pay(invoice, 2000)
+		note = p.make_credit_note(invoice, {0: 1})
+		row = next(r for r in h.ledger(invoice.name) if r.entry_type == "Credit Note Deduction")
+		self.assertEqual(row.credit_note, note.name)
+		self.assertEqual(flt(row.net_amount), -1000)
+		self.assertEqual(flt(row.base_net_amount), flt(note.items[0].base_net_amount))
+
+	def test_advance_row_holds_the_invoice_line_net_amount(self):
+		item = h.make_item(h.make_group(), percent=10)
+		order = h.make_order(h.make_customer(), [(item, 1, 1000)], team=[(h.make_sales_person(), 100)])
+		p.pay(order, 1000)
+		advance = next(r for r in h.ledger(order.name))
+		self.assertEqual(flt(advance.net_amount), flt(order.items[0].net_amount))
+		self.assertEqual(flt(advance.base_net_amount), flt(order.items[0].base_net_amount))
+		invoice = p.invoice_from_order(order, submit=False)
+		invoice.set_advances()
+		invoice.save()
+		invoice.submit()
+		row = next(r for r in h.ledger(invoice.name) if r.entry_type == "Advance Adjustment")
+		self.assertEqual(flt(row.net_amount), 1000)
+
 	def test_sales_person_without_employee_is_blocked(self):
 		item = h.make_item(h.make_group(), percent=10)
 		person = h.make_sales_person(employee=False)

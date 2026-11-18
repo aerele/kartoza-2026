@@ -4,6 +4,7 @@ import frappe
 from frappe.query_builder.functions import Abs, Max, Sum
 from frappe.utils import flt, getdate
 
+from sales_commission.utils.line_fields import plain_amount
 from sales_commission.utils.original_lines import OriginalLines
 
 # Only Payment Entries count as payments (POS, write-off, loyalty and Journal Entries do not)
@@ -29,7 +30,38 @@ class PaymentSlices:
 		self.advances = self.advance_vouchers(set(self.details))
 		if self.doc.doctype == "Sales Order":
 			return self.order_slices(rows)
-		return self.build(rows, lambda r: -flt(r.amount_in_account_currency), lambda r: r.posting_date)
+		slices = self.build(rows, lambda r: -flt(r.amount_in_account_currency), lambda r: r.posting_date)
+		return self.invoice_slices(slices)
+
+	def invoice_slices(self, slices):
+		"""An advance slice is dated by the day the advance was allocated to the invoice."""
+		dates = self.advance_dates("Sales Invoice", self.doc.name)
+		for slice_ in slices:
+			if slice_.advance:
+				# without an Advances row it was reconciled later: the day its ledger row was written
+				slice_.adjusted_on = dates.get(slice_.payment_name) or getdate(slice_.creation)
+		return slices
+
+	def advance_dates(self, doctype, name):
+		"""Posting date of the invoice that took each payment through its Advances table, by payment."""
+		advance = frappe.qb.DocType("Sales Invoice Advance")
+		invoice = frappe.qb.DocType("Sales Invoice")
+		query = (
+			frappe.qb.from_(advance)
+			.join(invoice)
+			.on(invoice.name == advance.parent)
+			.select(advance.reference_name, Max(invoice.posting_date))
+			.where(advance.reference_type == PAYMENT_VOUCHER)
+			.where(invoice.docstatus == 1)
+			.groupby(advance.reference_name)
+		)
+		if doctype == "Sales Invoice":
+			query = query.where(invoice.name == name)
+		else:
+			item = frappe.qb.DocType("Sales Invoice Item")
+			orders = frappe.qb.from_(item).select(item.parent).where(item.sales_order == name)
+			query = query.where(invoice.name.isin(orders))
+		return {payment: getdate(date) for payment, date in query.run()}
 
 	def invoice_rows(self):
 		return frappe.get_all(
@@ -64,9 +96,13 @@ class PaymentSlices:
 			lambda r: -flt(r.amount) if r.event == "Submit" else 0,
 			lambda r: self.details[self.key(r)].date,
 		)
+		dates = self.advance_dates("Sales Order", self.doc.name)
 		for slice_ in slices:
 			adjusted = [r.creation for r in rows if self.key(r) == slice_.key and r.event == "Adjustment"]
-			slice_.adjusted_on = getdate(max(adjusted)) if adjusted else None
+			# the invoice's posting date when it took the advance itself, else the day it was reconciled
+			slice_.adjusted_on = (
+				dates.get(slice_.payment_name) or getdate(max(adjusted)) if adjusted else None
+			)
 		return slices
 
 	def build(self, rows, amount_of, date_of):
@@ -145,7 +181,6 @@ class CreditNotes:
 		"name",
 		"posting_date",
 		"creation",
-		"override_deduction",
 		"grand_total",
 		"rounded_total",
 		"base_grand_total",
@@ -165,8 +200,8 @@ class CreditNotes:
 				line = note.lines.setdefault(
 					original[0].get("name"), frappe._dict(commission=0, base_commission=0)
 				)
-				line.commission += flt(row.commission_amount)
-				line.base_commission += flt(row.base_commission_amount)
+				line.commission += plain_amount(row)
+				line.base_commission += plain_amount(row, base=True)
 		return sorted(notes.values(), key=lambda n: (n.date, n.creation))
 
 	def read_rows(self):
@@ -180,6 +215,10 @@ class CreditNotes:
 			item.sales_invoice_item,
 			item.commission_amount,
 			item.base_commission_amount,
+			item.net_amount,
+			item.base_net_amount,
+			item.commission_percent,
+			item.commission_factor,
 		)
 		return (
 			query.where(si.return_against == self.invoice.name)
@@ -193,7 +232,6 @@ class CreditNotes:
 			name=row.name,
 			date=getdate(row.posting_date),
 			creation=row.creation,
-			override=bool(row.override_deduction),
 			lines={},
 			grand_total=flt(row.rounded_total or row.grand_total),
 			base_grand_total=flt(row.base_rounded_total or row.base_grand_total),

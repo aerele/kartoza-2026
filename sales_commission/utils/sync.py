@@ -23,6 +23,9 @@ def sync_on_change(doc, method=None):
 			sync_document("Sales Invoice", doc.name, doc)
 	elif has_commission(doc) or has_ledger_rows(doc.doctype, doc.name):
 		sync_document(doc.doctype, doc.name, doc)
+		if doc.doctype == "Sales Invoice":
+			# an advance reconciled later moves off the order without any event on the order
+			sync_on_invoice(doc)
 
 
 def sync_on_advance(doc, method=None):

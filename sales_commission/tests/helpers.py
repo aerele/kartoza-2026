@@ -10,6 +10,7 @@ ABBR = "_TCK"
 BANK = f"Bank Accounts - {ABBR}"
 VAT = f"VAT - {ABBR}"
 WAREHOUSE = f"Stores - {ABBR}"
+EMPLOYEE_TYPE = "full time"
 THIS_YEAR = getdate().year
 # two years back to next year, so the tests keep working as the calendar moves on
 FISCAL_YEARS = tuple(range(THIS_YEAR - 2, THIS_YEAR + 2))
@@ -31,6 +32,7 @@ def ensure_test_environment():
 			}
 		).insert(ignore_permissions=True)
 	ensure_fiscal_years()
+	ensure_employee_type()
 	if not frappe.db.exists("Account", VAT):
 		frappe.get_doc(
 			{
@@ -42,6 +44,15 @@ def ensure_test_environment():
 				"account_currency": "ZAR",
 			}
 		).insert(ignore_permissions=True)
+
+
+def ensure_employee_type():
+	"""The kartoza app requires an Employee Type on every Employee."""
+	if frappe.db.exists("Employee Type", EMPLOYEE_TYPE):
+		return
+	frappe.get_doc({"doctype": "Employee Type", "employee_type_name": EMPLOYEE_TYPE}).insert(
+		ignore_permissions=True
+	)
 
 
 def fiscal_year_of(date):
@@ -157,7 +168,7 @@ def make_employee():
 				"gender": "Female",
 				"date_of_birth": "1990-01-01",
 				"date_of_joining": "2020-01-01",
-				"custom_employee_type": "full time",
+				"custom_employee_type": EMPLOYEE_TYPE,
 			}
 		)
 		.insert(ignore_permissions=True)

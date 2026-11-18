@@ -67,6 +67,13 @@ def line_fields(insert_after):
 			"options": COMPANY_CURRENCY,
 			"insert_after": "commission_amount",
 		},
+		{
+			**common,
+			"fieldname": "target_multiplier",
+			"label": "Target Multiplier",
+			"fieldtype": "Data",
+			"insert_after": "base_commission_amount",
+		},
 	]
 
 
@@ -105,38 +112,9 @@ def header_fields(insert_after):
 	]
 
 
-def override_fields():
-	"""Credit note: a System Manager can stop the commission deduction."""
-	common = {"depends_on": "eval:doc.is_return", "allow_on_submit": 1, "no_copy": 1, "print_hide": 1}
-	return [
-		{
-			**common,
-			"fieldname": "override_section",
-			"label": "Commission Override",
-			"fieldtype": "Section Break",
-			"insert_after": "base_total_commission_amount",
-			"collapsible": 1,
-		},
-		{
-			**common,
-			"fieldname": "override_deduction",
-			"label": "Override Deduction",
-			"fieldtype": "Check",
-			"insert_after": "override_section",
-		},
-		{
-			**common,
-			"fieldname": "override_reason",
-			"label": "Override Reason",
-			"fieldtype": "Small Text",
-			"insert_after": "override_deduction",
-		},
-	]
-
-
 CUSTOM_FIELDS = {
 	"Sales Order": header_fields("sales_team"),
-	"Sales Invoice": [*header_fields("sales_team"), *override_fields()],
+	"Sales Invoice": header_fields("sales_team"),
 	"Sales Order Item": line_fields("gross_profit"),
 	"Sales Invoice Item": line_fields("base_net_amount"),
 	"Item": [
@@ -180,3 +158,14 @@ def make_target_distribution_optional():
 		return
 	make_property_setter("Target Detail", "distribution_id", "reqd", 0, "Check")
 	frappe.db.set_value("Property Setter", name, "module", "Sales Commission")
+
+
+def hide_sales_team_commission_rate():
+	"""Sales Team: the Commission Rate column is not used, the incentives come from the line commission."""
+	for property_name in ("hidden", "in_list_view"):
+		name = f"Sales Team-commission_rate-{property_name}"
+		value = "1" if property_name == "hidden" else "0"
+		if frappe.db.get_value("Property Setter", name, "value") == value:
+			continue
+		make_property_setter("Sales Team", "commission_rate", property_name, int(value), "Check")
+		frappe.db.set_value("Property Setter", name, "module", "Sales Commission")

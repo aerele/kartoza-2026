@@ -10,15 +10,15 @@ class Escalator:
 		self.totals = {}
 		self.targets = {}
 
-	def apply(self, entry, recognised):
-		"""recognised: the sales amount this row adds to the person's year-to-date sales."""
+	def split(self, entry, recognised):
+		"""Sets the fiscal year; returns (multiplier, sales) parts of the row: up to the target at 1, above it at the multiplier."""
 		entry.fiscal_year = get_fiscal_year(entry.posting_date, company=entry.company)[0]
 		target = self.target(entry.sales_person, entry.fiscal_year)
-		entry.multiplier = 1.0
-		self.stamp(entry, recognised)
-		# no target means no escalator, never a multiplier on a 0 target
-		if target and entry.running_total_before >= target:
-			entry.multiplier = flt(frappe.get_cached_doc("Commission Settings").escalator_multiplier)
+		before = 0.0
+		if entry.sales_person:
+			before = self.running_total(entry.sales_person, entry.fiscal_year)
+		multiplier = flt(frappe.get_cached_doc("Commission Settings").escalator_multiplier)
+		return split_at_target(before, flt(recognised), target, multiplier)
 
 	def stamp(self, row, recognised):
 		"""Year-to-date sales before and after the row; the difference is what the row counts."""
@@ -53,6 +53,31 @@ class Escalator:
 	def forget(self):
 		"""Rows were cancelled, so the totals are read again when needed."""
 		self.totals = {}
+
+
+def split_at_target(before, amount, target, multiplier):
+	"""(multiplier, amount) parts of sales added after `before`: within the target at 1, above it at the multiplier."""
+	# no target means no escalator, never a multiplier on a 0 target
+	if not target or multiplier == 1:
+		return [(1.0, amount)]
+	if before >= target:
+		return [(multiplier, amount)]
+	room = flt(target - before, 2)
+	if amount <= room:
+		return [(1.0, amount)]
+	return [(1.0, room), (multiplier, flt(amount - room, 2))]
+
+
+def shares_of(rows):
+	"""(multiplier, share) of the rows by the sales each counted, so a top-up or a moved advance follows the split."""
+	weights = {}
+	for row in rows:
+		weight = flt(row.running_total_after) - flt(row.running_total_before)
+		weights[flt(row.multiplier, 6)] = weights.get(flt(row.multiplier, 6), 0) + weight
+	total = sum(weights.values())
+	if not total:
+		return [(flt(rows[-1].multiplier), 1.0)]
+	return [(multiplier, weight / total) for multiplier, weight in weights.items()]
 
 
 def annual_target(sales_person, fiscal_year):

@@ -6,6 +6,7 @@ import frappe
 from frappe.query_builder.functions import Abs, Max, Sum
 from frappe.utils import flt, getdate
 
+from sales_commission.utils.line_fields import plain_amount
 from sales_commission.utils.original_lines import OriginalLines
 
 NOTE_FIELDS = [
@@ -13,13 +14,23 @@ NOTE_FIELDS = [
 	"creation",
 	"currency",
 	"party_account_currency",
-	"override_deduction",
 	"grand_total",
 	"rounded_total",
 	"base_grand_total",
 	"base_rounded_total",
 ]
-LINE_FIELDS = ["name", "parent", "item_code", "item_group", "commission_amount", "base_commission_amount"]
+LINE_FIELDS = [
+	"name",
+	"parent",
+	"item_code",
+	"item_group",
+	"commission_amount",
+	"base_commission_amount",
+	"net_amount",
+	"base_net_amount",
+	"commission_percent",
+	"commission_factor",
+]
 
 
 class Reconciliations:
@@ -90,6 +101,8 @@ class Reconciliations:
 
 	def with_amounts(self, pairs):
 		"""Amount settled (party currency) and date per credit note and invoice, journals added up."""
+		if not pairs:
+			return []
 		ple = frappe.qb.DocType("Payment Ledger Entry")
 		rows = (
 			frappe.qb.from_(ple)
@@ -174,13 +187,12 @@ class ReconciledNotes:
 				line = lines.setdefault(
 					original[0].get("name"), frappe._dict(commission=0, base_commission=0)
 				)
-				line.commission += flt(row.commission_amount) * share
-				line.base_commission += flt(row.base_commission_amount) * share
+				line.commission += plain_amount(row) * share
+				line.base_commission += plain_amount(row, base=True) * share
 		return frappe._dict(
 			name=note.name,
 			date=entry.date,
 			creation=entry.creation,
-			override=bool(note.override_deduction),
 			lines=lines,
 			grand_total=-entry.amount,
 			base_grand_total=-entry.amount,

@@ -8,6 +8,10 @@ LINE_FIELDS = [
 	"commission_classification",
 	"commission_percent",
 	"commission_factor",
+	"commission_amount",
+	"net_amount",
+	"base_net_amount",
+	"target_multiplier",
 ]
 
 

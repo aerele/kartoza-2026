@@ -61,6 +61,7 @@ class ExpectedEntries:
 			customer=doc.customer,
 			sales_date=getdate(doc.get("transaction_date") or doc.get("posting_date")),
 			reference_row=row.name,
+			source_row=row.get("so_detail"),
 			item_code=row.item_code,
 			item_group=row.item_group,
 			classification=row.commission_classification,
@@ -76,7 +77,6 @@ class ExpectedEntries:
 				name=n.name,
 				date=n.date,
 				creation=n.creation,
-				override=n.override,
 				note_commission=self.note_commission(n, row) * ratio,
 				note_grand_total=n.base_grand_total if self.use_base else n.grand_total,
 			)
@@ -114,7 +114,28 @@ class ExpectedEntries:
 			adjusted_on=slice_.adjusted_on,
 			earned=step.earned * allocated / 100,
 			paid=step.paid * allocated / 100,
+			counted=step.counted * allocated / 100,
+			parts=[self.part(part, allocated) for part in step.parts],
 		)
+
+	def part(self, part, allocated):
+		return frappe._dict(
+			part,
+			earned=part.earned * allocated / 100,
+			paid=part.paid * allocated / 100,
+			counted=part.counted * allocated / 100,
+		)
+
+	def before_shares(self, before):
+		"""{payment: (share of its commission, share of its sales)} earned before the credit note."""
+		shares = {}
+		for entry, earned, counted in before:
+			key = (entry.slice.payment_doctype, entry.slice.payment_name)
+			shares[key] = (
+				earned / entry.earned if entry.earned else 1,
+				counted / entry.counted if entry.counted else 1,
+			)
+		return shares
 
 	def fill_deduction(self, entry, step, allocated):
 		note = step.note
@@ -128,6 +149,5 @@ class ExpectedEntries:
 			at=(note.date, note.creation),
 			deduction=step.deduction * allocated / 100,
 			ratio=step.ratio,
-			before=step.before,
-			override=note.override,
+			before=self.before_shares(step.before),
 		)

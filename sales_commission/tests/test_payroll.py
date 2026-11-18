@@ -15,7 +15,9 @@ class TestPayroll(h.CommissionTestCase):
 		pr.make_component(pr.COMMISSION_COMPONENT, "TSC", remove_if_zero=1)
 		pr.ensure_holiday_list()
 		pr.ensure_payroll_period()
-		h.set_settings(commission_salary_component=pr.COMMISSION_COMPONENT)
+		h.set_settings(
+			commission_salary_component=pr.COMMISSION_COMPONENT, include_commission_for_credit_note=0
+		)
 		self.person = h.make_sales_person()
 		self.employee = frappe.db.get_value("Sales Person", self.person, "employee")
 		pr.make_structure_assignment(self.employee)
@@ -57,6 +59,7 @@ class TestPayroll(h.CommissionTestCase):
 		self.assertEqual(self.statuses(), ["Earned"])
 
 	def test_slip_marks_negative_rows_deducted_and_cancel_puts_them_back(self):
+		h.set_settings(include_commission_for_credit_note=1)
 		item = h.make_item(h.make_group(), percent=10)
 		invoice = h.make_invoice(
 			h.make_customer(), [(item, 2, 1000)], date=h.date_in(0, "04-10"), team=[(self.person, 100)]

@@ -46,8 +46,9 @@ required_apps = ["erpnext", "hrms", "kartoza"]
 # include js in doctype views
 # doctype_js = {"doctype" : "public/js/doctype.js"}
 doctype_js = {
-	"Sales Order": "public/js/commission.js",
-	"Sales Invoice": "public/js/commission.js",
+	"Customer": ["public/js/sales_team.js", "public/js/customer.js"],
+	"Sales Order": ["public/js/sales_team.js", "public/js/commission.js"],
+	"Sales Invoice": ["public/js/sales_team.js", "public/js/commission.js"],
 }
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
@@ -171,6 +172,7 @@ after_migrate = "sales_commission.setup.install.after_migrate"
 
 doc_events = {
 	"Item": {"validate": "sales_commission.utils.rates.validate_item_percent"},
+	"Customer": {"validate": "sales_commission.utils.sales_team.validate_sales_person_not_group"},
 	"Advance Payment Ledger Entry": {"on_update": "sales_commission.utils.sync.sync_on_advance"},
 	"Payment Entry": {
 		"on_submit": "sales_commission.utils.sync.sync_on_payment",
@@ -197,12 +199,10 @@ doc_events = {
 	},
 	"Sales Invoice": {
 		"validate": [
-			"sales_commission.utils.override.validate_override",
 			"sales_commission.utils.sales_team.validate_sales_person_employee",
 			"sales_commission.utils.validation.calculate_commission",
 		],
 		"before_update_after_submit": [
-			"sales_commission.utils.override.validate_override",
 			"sales_commission.utils.sales_team.validate_sales_person_employee",
 			"sales_commission.utils.validation.update_commission_after_submit",
 		],

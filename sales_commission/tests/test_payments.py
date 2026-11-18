@@ -49,9 +49,10 @@ class TestReconciledPayments(h.CommissionTestCase):
 		customer, invoice, note = self.invoice_and_standalone_note(paid=1380)
 		self.assertEqual((self.total(invoice), self.total(note)), (69, -138))
 		p.reconcile(customer)
-		# half of the invoice is credited, so half of what it earned is taken back from the invoice
+		# half of the invoice is credited, so half of what it earned is taken back from the invoice, but
+		# the 1380 paid now covers all that is still owed, so the other half earns its rest (+34.5)
 		# and the credit note keeps only the half that settled nothing
-		self.assertEqual(self.total(invoice), 34.5)
+		self.assertEqual(self.total(invoice), 69)
 		self.assertEqual(self.total(note), -69)
 		deduction = [r for r in h.ledger(invoice.name) if r.entry_type == "Credit Note Deduction"]
 		self.assertEqual([r.credit_note for r in deduction], [note.name])

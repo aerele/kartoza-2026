@@ -33,6 +33,70 @@ class TestSalesTeam(h.CommissionTestCase):
 			totals[row.sales_person] = flt(totals.get(row.sales_person, 0) + flt(row.commission_amount), 2)
 		return totals
 
+	def make_group_person(self):
+		return (
+			frappe.get_doc(
+				{
+					"doctype": "Sales Person",
+					"sales_person_name": h.unique("SPG"),
+					"parent_sales_person": "Sales Team",
+					"is_group": 1,
+				}
+			)
+			.insert(ignore_permissions=True)
+			.name
+		)
+
+	def team_incentives(self, doc):
+		return [flt(row.incentives) for row in doc.sales_team]
+
+	def test_incentives_split_an_item_percent_line_by_allocated_percentage(self):
+		item = h.make_item(self.group, percent=5)
+		invoice = h.make_invoice(h.make_customer(), [(item, 1, 1000)], team=self.team)
+		self.assertEqual(self.team_incentives(invoice), [30, 20])
+
+	def test_incentives_follow_each_persons_own_rate_and_match_the_ledger(self):
+		anna, ben = h.make_sales_person(rate=8), h.make_sales_person(rate=5)
+		item = h.make_item(self.group)
+		invoice = h.make_invoice(h.make_customer(), [(item, 1, 1000)], team=[(anna, 60), (ben, 40)])
+		# net 1000: Anna 60% of 1000 at 8% = 48, Ben 40% of 1000 at 5% = 20
+		self.assertEqual(self.team_incentives(invoice), [48, 20])
+		p.pay(invoice, 1000)
+		self.assertEqual(self.by_person(invoice), {anna: 48, ben: 20})
+
+	def test_incentives_are_recomputed_when_the_team_changes_after_submit(self):
+		item = h.make_item(self.group, percent=5)
+		order = h.make_order(h.make_customer(), [(item, 1, 1000)], team=self.team)
+		order.sales_team[0].allocated_percentage = 50
+		order.sales_team[1].allocated_percentage = 50
+		order.flags.ignore_permissions = True
+		order.save()
+		self.assertEqual(self.team_incentives(frappe.get_doc("Sales Order", order.name)), [25, 25])
+
+	def test_a_credit_note_has_negative_incentives(self):
+		item = h.make_item(self.group, percent=5)
+		invoice = h.make_invoice(h.make_customer(), [(item, 10, 1000)], team=self.team)
+		p.pay(invoice, 10000)
+		note = p.make_credit_note(invoice, {0: 4})
+		self.assertEqual(self.team_incentives(note), [-120, -80])
+
+	def test_the_sales_team_commission_rate_is_hidden(self):
+		for prop, value in (("hidden", "1"), ("in_list_view", "0")):
+			name = f"Sales Team-commission_rate-{prop}"
+			self.assertEqual(frappe.db.get_value("Property Setter", name, "value"), value)
+
+	def test_group_sales_person_is_blocked_on_order_invoice_and_customer(self):
+		group_person = self.make_group_person()
+		item = h.make_item(self.group, percent=5)
+		with self.assertRaisesRegex(frappe.ValidationError, "is a group"):
+			h.make_order(h.make_customer(), [(item, 1, 1000)], team=[(group_person, 100)])
+		with self.assertRaisesRegex(frappe.ValidationError, "is a group"):
+			h.make_invoice(h.make_customer(), [(item, 1, 1000)], team=[(group_person, 100)])
+		customer = frappe.get_doc("Customer", h.make_customer())
+		customer.append("sales_team", {"sales_person": group_person, "allocated_percentage": 100})
+		with self.assertRaisesRegex(frappe.ValidationError, "is a group"):
+			customer.save()
+
 	def test_commission_is_split_by_allocated_percentage(self):
 		item = h.make_item(self.group, percent=5)
 		invoice = h.make_invoice(h.make_customer(), [(item, 1, 1000)], team=self.team)
@@ -43,7 +107,8 @@ class TestSalesTeam(h.CommissionTestCase):
 			{(self.first, 60, 30), (self.second, 40, 20)},
 		)
 		self.assertEqual(
-			{r.sales_person: flt(r.running_total_after - r.running_total_before) for r in rows}, {self.first: 600, self.second: 400}
+			{r.sales_person: flt(r.running_total_after - r.running_total_before) for r in rows},
+			{self.first: 600, self.second: 400},
 		)
 
 	def test_credit_note_takes_back_each_share(self):
@@ -88,70 +153,3 @@ class TestSalesTeam(h.CommissionTestCase):
 		nobody = h.make_sales_person(employee=False)
 		with self.assertRaises(frappe.ValidationError):
 			h.make_order(h.make_customer(), [(item, 1, 1000)], team=[(self.first, 50), (nobody, 50)])
-
-
-class TestOverride(h.CommissionTestCase):
-	def setUp(self):
-		super().setUp()
-		h.set_settings(factors=(1.0, 1.0))
-		self.person = h.make_sales_person()
-		self.group = h.make_group()
-		item = h.make_item(self.group, percent=5)
-		self.invoice = h.make_invoice(h.make_customer(), [(item, 10, 1000)], team=[(self.person, 100)])
-		p.pay(self.invoice, 10000)
-
-	def total(self):
-		return flt(sum(r.commission_amount for r in h.ledger(self.invoice.name)), 2)
-
-	def test_only_a_system_manager_changes_the_override(self):
-		note = p.make_credit_note(self.invoice, {0: 4})
-		self.assertEqual(self.total(), 300)
-		clerk = make_user("Accounts User")
-		frappe.set_user(clerk)
-		note.reload()
-		note.override_deduction = 1
-		with self.assertRaises(frappe.ValidationError) as blocked:
-			note.save()
-		self.assertIn("System Manager", str(blocked.exception))
-
-		frappe.set_user(make_user("Accounts User", "System Manager"))
-		note.reload()
-		note.override_deduction = 1
-		note.save()
-		self.assertEqual(self.total(), 500)
-		self.assertIn("Override Reversal", [r.entry_type for r in h.ledger(self.invoice.name)])
-
-		frappe.set_user(clerk)
-		note.reload()
-		note.override_deduction = 0
-		with self.assertRaises(frappe.ValidationError):
-			note.save()
-
-		frappe.set_user(make_user("Accounts User", "System Manager"))
-		note.reload()
-		note.override_deduction = 0
-		note.save()
-		self.assertEqual(self.total(), 300)
-
-	def test_a_clerk_can_still_edit_the_reason(self):
-		note = p.make_credit_note(self.invoice, {0: 4})
-		frappe.set_user(make_user("Accounts User"))
-		note.reload()
-		note.override_reason = "Noted"
-		note.save()
-		self.assertEqual(note.reload().override_reason, "Noted")
-
-	def test_override_ticked_before_submit_deducts_nothing_and_needs_no_reason(self):
-		note = p.make_credit_note(self.invoice, {0: 4}, submit=False)
-		note.override_deduction = 1
-		note.save()
-		note.submit()
-		self.assertEqual(self.total(), 500)
-
-	def test_override_is_cleared_on_an_invoice_that_is_not_a_return(self):
-		item = h.make_item(self.group, percent=5)
-		invoice = h.make_invoice(
-			h.make_customer(), [(item, 1, 100)], submit=False, override_deduction=1, override_reason="Typed"
-		)
-		invoice.reload()
-		self.assertEqual((invoice.override_deduction, invoice.override_reason), (0, None))

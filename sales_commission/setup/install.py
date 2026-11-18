@@ -2,6 +2,7 @@ import frappe
 
 from sales_commission.setup.custom_fields import (
 	create_commission_fields,
+	hide_sales_team_commission_rate,
 	hide_standard_commission_section,
 	make_target_distribution_optional,
 )
@@ -11,6 +12,7 @@ def after_install():
 	create_commission_fields()
 	hide_standard_commission_section()
 	make_target_distribution_optional()
+	hide_sales_team_commission_rate()
 	save_default_settings()
 
 
@@ -18,6 +20,7 @@ def after_migrate():
 	create_commission_fields()
 	hide_standard_commission_section()
 	make_target_distribution_optional()
+	hide_sales_team_commission_rate()
 	warn_if_app_order_wrong()
 
 

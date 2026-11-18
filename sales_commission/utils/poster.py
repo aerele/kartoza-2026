@@ -51,7 +51,6 @@ class LedgerPoster:
 				deduction=0,
 				at=(getdate(), now_datetime()),
 				date=getdate(),
-				override=False,
 				cancelled=self.is_cancelled_cause(probe),
 			)
 			result.append(probe)

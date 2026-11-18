@@ -8,6 +8,7 @@ from sales_commission.utils.line_fields import (
 )
 from sales_commission.utils.order_links import OrderLinks
 from sales_commission.utils.rates import RateResolver
+from sales_commission.utils.target_estimate import TargetMultipliers
 
 CART_NOTE = "Shopping Cart order"
 NOT_GRANTED_NOTE = "Grant Commission off"
@@ -21,7 +22,7 @@ class LineCalculator:
 	# keep_stored: lines that already have a classification keep it and their %, only amounts follow.
 	# plain: lines of a credit note without an original, worked out like any invoice line.
 
-	def __init__(self, doc, rows=None, keep_stored=False, plain=False):
+	def __init__(self, doc, rows=None, keep_stored=False, plain=False, multipliers=None):
 		self.doc = doc
 		self.rows = doc.items if rows is None else rows
 		self.keep_stored = keep_stored
@@ -29,15 +30,19 @@ class LineCalculator:
 		self.rates = RateResolver(doc.get("sales_team"))
 		self.history = SalesHistory(doc)
 		self.links = OrderLinks(doc)
+		self.multipliers = multipliers or TargetMultipliers(doc, enabled=not plain)
 		self.kept = []
+		self.factor = 1.0
 
 	def apply(self):
 		self.classify_lines()
+		self.factor = self.multipliers.for_line()
 		for row in self.rows:
 			if any(row is kept for kept in self.kept):
 				self.follow_net_amount(row)
 			else:
-				set_line_amounts(row)
+				set_line_amounts(row, self.factor)
+			row.target_multiplier = self.multipliers.describe(row)
 
 	def classify_lines(self):
 		pending = []
@@ -68,8 +73,9 @@ class LineCalculator:
 		"""A stored line keeps its amount when only a cent fix separates it from the new value."""
 		for field, base in (("commission_amount", False), ("base_commission_amount", True)):
 			tolerance = 10 ** -row.precision(field) * max(len(self.rows), 1)
-			if abs(unrounded_commission(row, base) - flt(row.get(field))) > tolerance:
-				row.set(field, flt(unrounded_commission(row, base), row.precision(field)))
+			estimate = unrounded_commission(row, base) * self.factor
+			if abs(estimate - flt(row.get(field))) > tolerance:
+				row.set(field, flt(estimate, row.precision(field)))
 
 	def excluded_reason(self, row):
 		if not row.get("grant_commission"):

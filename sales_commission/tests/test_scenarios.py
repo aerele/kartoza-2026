@@ -59,7 +59,9 @@ class TestOrderInvoiceScenarios(ScenarioCase):
 		order = h.make_order(self.customer, [(item, 1, 1000)], team=self.team)
 		p.pay(order, 1000)
 		self.assertEqual(self.total(order), 100)
-		order = self.update_items(order, [{"docname": order.items[0].name, "item_code": item, "qty": 2, "rate": 1000}])
+		order = self.update_items(
+			order, [{"docname": order.items[0].name, "item_code": item, "qty": 2, "rate": 1000}]
+		)
 		self.assertEqual(flt(order.total_commission_amount), 200)
 		# 1000 of 2000 paid, so half of the new commission
 		self.assertEqual(self.total(order), 100)
@@ -145,8 +147,17 @@ class TestOrderInvoiceScenarios(ScenarioCase):
 	def test_old_document_is_unchanged_by_a_team_edit(self):
 		invoice = h.make_invoice(self.customer, [(self.item(), 1, 1000)], team=self.team)
 		for row in invoice.items:
-			frappe.db.set_value(row.doctype, row.name, {"commission_classification": "", "commission_amount": 0,
-				"base_commission_amount": 0, "commission_percent": 0, "commission_factor": 0})
+			frappe.db.set_value(
+				row.doctype,
+				row.name,
+				{
+					"commission_classification": "",
+					"commission_amount": 0,
+					"base_commission_amount": 0,
+					"commission_percent": 0,
+					"commission_factor": 0,
+				},
+			)
 		frappe.db.set_value(
 			"Sales Invoice", invoice.name, {"total_commission_amount": 0, "base_total_commission_amount": 0}
 		)
@@ -157,12 +168,16 @@ class TestOrderInvoiceScenarios(ScenarioCase):
 
 class TestPaymentScenarios(ScenarioCase):
 	def test_partial_payments_in_two_months_post_in_their_months(self):
-		invoice = h.make_invoice(self.customer, [(self.item(), 1, 1000)], team=self.team, date=h.date_in(0, "04-01"))
+		invoice = h.make_invoice(
+			self.customer, [(self.item(), 1, 1000)], team=self.team, date=h.date_in(0, "04-01")
+		)
 		p.pay(invoice, 500, date=h.date_in(0, "04-20"))
 		p.pay(invoice, 500, date=h.date_in(0, "05-05"))
 		rows = h.ledger(invoice.name)
-		self.assertEqual([(str(r.posting_date), flt(r.commission_amount)) for r in rows],
-			[(h.date_in(0, "04-20"), 50), (h.date_in(0, "05-05"), 50)])
+		self.assertEqual(
+			[(str(r.posting_date), flt(r.commission_amount)) for r in rows],
+			[(h.date_in(0, "04-20"), 50), (h.date_in(0, "05-05"), 50)],
+		)
 
 	def test_overpayment_earns_only_the_invoice_commission(self):
 		invoice = h.make_invoice(self.customer, [(self.item(), 1, 1000)], team=self.team)
@@ -185,7 +200,9 @@ class TestPaymentScenarios(ScenarioCase):
 		self.assertEqual((self.total(invoice), len(h.ledger(invoice.name))), (100, 1))
 
 	def test_payment_before_the_invoice_date_posts_on_the_payment_date(self):
-		invoice = h.make_invoice(self.customer, [(self.item(), 1, 1000)], team=self.team, date=h.date_in(0, "05-10"))
+		invoice = h.make_invoice(
+			self.customer, [(self.item(), 1, 1000)], team=self.team, date=h.date_in(0, "05-10")
+		)
 		p.pay(invoice, 1000, date=h.date_in(0, "05-12"))
 		self.assertEqual(str(h.ledger(invoice.name)[0].posting_date), h.date_in(0, "05-12"))
 
@@ -200,7 +217,9 @@ class TestCreditNoteScenarios(ScenarioCase):
 		self.assertEqual([flt(r.commission_amount) for r in deduction], [-100])
 
 	def test_credit_note_in_the_next_fiscal_year_posts_in_that_year(self):
-		invoice = h.make_invoice(self.customer, [(self.item(), 1, 1000)], team=self.team, date=h.date_in(0, "06-10"))
+		invoice = h.make_invoice(
+			self.customer, [(self.item(), 1, 1000)], team=self.team, date=h.date_in(0, "06-10")
+		)
 		p.pay(invoice, 1000, date=h.date_in(0, "06-10"))
 		p.make_credit_note(invoice, date=h.date_in(-1, "06-10"))
 		rows = {r.entry_type: r for r in h.ledger(invoice.name)}
@@ -217,10 +236,15 @@ class TestCreditNoteScenarios(ScenarioCase):
 
 	def test_cancelling_the_credit_note_journal_restores_invoice_and_note(self):
 		invoice, note = self.reconciled_part_paid()
-		self.assertEqual((self.total(invoice), self.total(note)), (34.5, -69))
+		# the 1380 paid covers the half of the invoice left after the credit, so the invoice keeps all 69
+		self.assertEqual((self.total(invoice), self.total(note)), (69, -69))
 		journals = frappe.get_all(
 			"Journal Entry Account",
-			filters={"reference_type": "Sales Invoice", "reference_name": invoice.name, "parenttype": "Journal Entry"},
+			filters={
+				"reference_type": "Sales Invoice",
+				"reference_name": invoice.name,
+				"parenttype": "Journal Entry",
+			},
 			pluck="parent",
 		)
 		journal = frappe.get_doc("Journal Entry", journals[0])
@@ -271,13 +295,17 @@ class TestEscalatorScenarios(ScenarioCase):
 		deduction = [r for r in h.ledger(second.name) if r.entry_type == "Credit Note Deduction"]
 		self.assertEqual([flt(r.commission_amount) for r in deduction], [-150])
 		self.assertEqual(self.total(second), 0)
-		self.assertEqual(flt(sum(r.running_total_after - r.running_total_before for r in h.ledger(second.name))), 0)
+		self.assertEqual(
+			flt(sum(r.running_total_after - r.running_total_before for r in h.ledger(second.name))), 0
+		)
 
 
 class TestLedgerScenarios(ScenarioCase):
 	def test_sync_twice_after_payment_and_credit_note_posts_nothing_new(self):
 		h.set_target(self.person, h.fiscal_year_of(h.date_in(0, "04-01")), 1)
-		invoice = h.make_invoice(self.customer, [(self.item(), 10, 100)], team=self.team, date=h.date_in(0, "04-01"))
+		invoice = h.make_invoice(
+			self.customer, [(self.item(), 10, 100)], team=self.team, date=h.date_in(0, "04-01")
+		)
 		p.pay(invoice, 1000, date=h.date_in(0, "04-02"))
 		p.make_credit_note(invoice, {0: 4}, date=h.date_in(0, "04-03"))
 		before = [(r.name) for r in h.ledger(invoice.name)]

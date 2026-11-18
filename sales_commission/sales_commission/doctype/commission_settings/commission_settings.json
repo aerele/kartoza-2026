@@ -9,6 +9,7 @@
   "target_section",
   "column_break_mowk",
   "escalator_multiplier",
+  "include_commission_for_credit_note",
   "column_break_target",
   "commission_salary_component"
  ],
@@ -50,11 +51,18 @@
    "fieldtype": "Link",
    "label": "Commission Salary Component",
    "options": "Salary Component"
+  },
+  {
+   "default": "0",
+   "description": "When ticked, credit note deductions in the Commission Ledger reduce the commission on the Salary Slip.",
+   "fieldname": "include_commission_for_credit_note",
+   "fieldtype": "Check",
+   "label": "Include Commission for Credit Note"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-11-16 08:37:25.870009",
+ "modified": "2026-11-17 09:45:48.961994",
  "modified_by": "Administrator",
  "module": "Sales Commission",
  "name": "Commission Settings",
