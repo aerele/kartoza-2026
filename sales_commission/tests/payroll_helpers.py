@@ -41,6 +41,18 @@ def ensure_holiday_list():
 			}
 		).insert(ignore_permissions=True)
 	frappe.db.set_value("Company", COMPANY, "default_holiday_list", name)
+	# HRMS v16 finds the holiday list through a Holiday List Assignment, not the company field
+	assignment = {"applicable_for": "Company", "assigned_to": COMPANY, "holiday_list": name}
+	if not frappe.db.exists("Holiday List Assignment", {**assignment, "docstatus": 1}):
+		doc = frappe.get_doc(
+			{
+				"doctype": "Holiday List Assignment",
+				**assignment,
+				"from_date": frappe.db.get_value("Holiday List", name, "from_date"),
+			}
+		)
+		doc.insert(ignore_permissions=True)
+		doc.submit()
 
 
 def ensure_payroll_period():

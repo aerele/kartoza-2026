@@ -165,6 +165,8 @@ def make_credit_note(invoice, lines=None, date=None, submit=True):
 	from erpnext.accounts.doctype.sales_invoice.sales_invoice import make_sales_return
 
 	note = make_sales_return(invoice.name)
+	# ERPNext v16 copies the invoice's Advances table as blank rows, which its validation rejects
+	note.set("advances", [])
 	note.posting_date = date or nowdate()
 	note.set_posting_time = 1
 	if lines:
