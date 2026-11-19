@@ -2,6 +2,7 @@ import json
 
 import frappe
 from erpnext.controllers.accounts_controller import update_child_qty_rate
+from frappe import _
 from frappe.utils import add_days, flt
 
 from sales_commission.tests import helpers as h
@@ -84,7 +85,7 @@ class TestCalculation(h.CommissionTestCase):
 		for team in (None, [(h.make_sales_person(), 100)]):
 			line = h.make_order(h.make_customer(), [(item, 1, 1000)], team=team).items[0]
 			self.assertEqual((flt(line.commission_percent), flt(line.commission_amount)), (0, 0))
-			self.assertEqual(line.commission_note, "No rate set")
+			self.assertEqual(line.commission_note, _("No rate set"))
 
 	def test_factor_change_affects_new_documents_only(self):
 		item, customer = h.make_item(h.make_group(), percent=10), h.make_customer()
@@ -104,7 +105,7 @@ class TestCalculation(h.CommissionTestCase):
 		settings.save()
 		frappe.clear_document_cache("Commission Settings", "Commission Settings")
 		line = h.make_order(h.make_customer(), [(item, 1, 1000)]).items[0]
-		self.assertEqual((flt(line.commission_amount), line.commission_note), (0, "No factor set"))
+		self.assertEqual((flt(line.commission_amount), line.commission_note), (0, _("No factor set")))
 
 	def test_duplicate_classification_row_is_rejected(self):
 		settings = frappe.get_single("Commission Settings")
@@ -180,11 +181,11 @@ class TestCalculation(h.CommissionTestCase):
 		group = h.make_group()
 		customer = h.make_customer()
 		cart = h.make_order(customer, [(h.make_item(group, percent=10), 1, 1000)], order_type="Shopping Cart")
-		self.assertEqual(cart.items[0].commission_note, "Shopping Cart order")
+		self.assertEqual(cart.items[0].commission_note, _("Shopping Cart order"))
 		off = h.make_order(customer, [(h.make_item(group, percent=10, grant=0), 1, 1000)])
-		self.assertEqual(off.items[0].commission_note, "Grant Commission off")
+		self.assertEqual(off.items[0].commission_note, _("Grant Commission off"))
 		no_rate = h.make_order(customer, [(h.make_item(h.make_group()), 1, 1000)])
-		self.assertEqual(no_rate.items[0].commission_note, "No rate set")
+		self.assertEqual(no_rate.items[0].commission_note, _("No rate set"))
 		paying = h.make_order(customer, [(h.make_item(group, percent=10), 1, 1000)])
 		self.assertEqual(paying.items[0].commission_note, "")
 
@@ -224,3 +225,18 @@ class TestCalculation(h.CommissionTestCase):
 		p.pay(order, 1000)
 		self.assertEqual(h.ledger(invoice.name), [])
 		self.assertEqual(h.ledger(order.name), [])
+
+	def test_item_commission_percent_must_be_between_0_and_100(self):
+		item = h.make_item(h.make_group(), percent=10)
+		for bad in (-1, -0.01, 100.01, 250):
+			doc = frappe.get_doc("Item", item)
+			doc.commission_percent = bad
+			with self.assertRaisesRegex(frappe.ValidationError, "must be between 0 and 100"):
+				doc.save()
+		for good in (0, 100):
+			doc = frappe.get_doc("Item", item)
+			doc.commission_percent = good
+			doc.save()
+			self.assertEqual(flt(frappe.db.get_value("Item", item, "commission_percent")), good)
+		with self.assertRaisesRegex(frappe.ValidationError, "must be between 0 and 100"):
+			h.make_item(h.make_group(), percent=-5)

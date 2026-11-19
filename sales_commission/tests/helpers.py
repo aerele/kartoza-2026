@@ -4,7 +4,7 @@ import frappe
 from erpnext.accounts.utils import get_fiscal_year, get_fiscal_years
 from frappe.core.doctype.system_settings.system_settings import clear_system_settings_cache
 from frappe.tests import IntegrationTestCase
-from frappe.utils import add_days, flt, getdate, nowdate
+from frappe.utils import add_days, flt, getdate
 
 COMPANY = "Commission Test Company"
 ABBR = "_TCK"
@@ -12,9 +12,27 @@ BANK = f"Bank Accounts - {ABBR}"
 VAT = f"VAT - {ABBR}"
 WAREHOUSE = f"Stores - {ABBR}"
 EMPLOYEE_TYPE = "full time"
-THIS_YEAR = getdate().year
-# two years back to next year, so the tests keep working as the calendar moves on
-FISCAL_YEARS = tuple(range(THIS_YEAR - 2, THIS_YEAR + 2))
+FY_START_MONTH = 3
+
+
+def fiscal_year_start():
+	"""Start year of the fiscal year the tests live in: the current one, or the last one early in a new year."""
+	today = getdate()
+	year = today.year if today.month >= FY_START_MONTH else today.year - 1
+	# the anchor date (15 June) must be in the past with room for day offsets after it
+	return year if today >= getdate(f"{year}-06-30") else year - 1
+
+
+FY_YEAR = fiscal_year_start()
+# two years back to the next one, so the tests keep working as the calendar moves on
+FISCAL_YEARS = tuple(range(FY_YEAR - 2, FY_YEAR + 2))
+# the one fixed date every "today" of the tests is counted from: mid June of the test fiscal year, in the past
+ANCHOR = f"{FY_YEAR}-06-15"
+
+
+def anchor_date(offset=0):
+	"""ANCHOR moved by offset days; the tests build their dates from this, never from the clock."""
+	return add_days(ANCHOR, offset)
 
 
 def ensure_test_environment():
@@ -147,8 +165,14 @@ def ensure_fiscal_years():
 
 
 def date_in(years_back, month_day):
-	"""A date in the fiscal year starting 1 March of this year minus years_back, e.g. date_in(1, "06-10")."""
-	return f"{THIS_YEAR - years_back}-{month_day}"
+	"""A date in the test fiscal year (starting 1 March) minus years_back, e.g. date_in(1, "06-10").
+
+	Months January and February belong to the second calendar year of the fiscal year.
+	"""
+	year = FY_YEAR - years_back
+	if int(month_day.split("-")[0]) < FY_START_MONTH:
+		year += 1
+	return f"{year}-{month_day}"
 
 
 def unique(prefix):
@@ -314,8 +338,8 @@ def make_order(customer, lines, date=None, team=None, rate=1, currency=None, sub
 			"doctype": "Sales Order",
 			"customer": customer,
 			"company": COMPANY,
-			"transaction_date": date or nowdate(),
-			"delivery_date": add_days(date or nowdate(), 30),
+			"transaction_date": date or ANCHOR,
+			"delivery_date": add_days(date or ANCHOR, 30),
 			"currency": currency or "ZAR",
 			"conversion_rate": rate,
 			"items": item_rows(lines),
@@ -335,9 +359,9 @@ def make_invoice(customer, lines, date=None, team=None, rate=1, currency=None, s
 			"doctype": "Sales Invoice",
 			"customer": customer,
 			"company": COMPANY,
-			"posting_date": date or nowdate(),
+			"posting_date": date or ANCHOR,
 			"set_posting_time": 1,
-			"due_date": date or nowdate(),
+			"due_date": date or ANCHOR,
 			"currency": currency or "ZAR",
 			"conversion_rate": rate,
 			"items": item_rows(lines),

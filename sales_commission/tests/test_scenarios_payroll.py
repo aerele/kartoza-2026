@@ -50,6 +50,7 @@ class PayrollScenarioCase(h.CommissionTestCase):
 		return flt(row.amount) if row else None
 
 	def this_month(self):
+		# reversals and advance moves are dated by the clock (the code posts them today), so this month is today's
 		return (get_first_day(nowdate()), get_last_day(nowdate()))
 
 	def live_total(self, employee=None):
@@ -101,6 +102,45 @@ class TestSlipPeriods(PayrollScenarioCase):
 		self.paid(2000, h.date_in(0, "04-20"))
 		slip.save()
 		self.assertEqual(self.amount(slip), 300)
+
+
+class TestSlipAcrossAFiscalYear(PayrollScenarioCase):
+	def test_slip_over_the_year_end_pays_exactly_the_rows_dated_in_its_period(self):
+		last_year, this_year = h.date_in(1, "02-10"), h.date_in(0, "03-05")
+		h.set_target(self.person, h.fiscal_year_of(last_year), 1000)
+		h.set_target(self.person, h.fiscal_year_of(this_year), 500)
+		# last year: 1000 reaches the target, so what follows earns 1.5. This year: 500 at 1 and the rest at 1.5
+		self.paid(1000, h.date_in(1, "02-10"))
+		self.paid(1000, h.date_in(1, "02-20"))
+		self.paid(1000, h.date_in(0, "03-05"))
+		self.paid(1000, h.date_in(0, "03-20"))
+		period = (h.date_in(1, "02-15"), h.date_in(0, "03-15"))
+		slip = self.slip(period, submit=True)
+		self.assertEqual(self.amount(slip), 275)
+		rows = frappe.get_all(
+			"Commission Ledger",
+			filters={"employee": self.employee, "is_cancelled": 0},
+			fields=["posting_date", "fiscal_year", "multiplier", "commission_amount", "salary_slip"],
+			order_by="posting_date asc, multiplier asc",
+		)
+		self.assertEqual(
+			[(str(r.posting_date), flt(r.multiplier), flt(r.commission_amount), r.salary_slip) for r in rows],
+			[
+				(h.date_in(1, "02-10"), 1, 100, None),
+				(h.date_in(1, "02-20"), 1.5, 150, slip.name),
+				(h.date_in(0, "03-05"), 1, 50, slip.name),
+				(h.date_in(0, "03-05"), 1.5, 75, slip.name),
+				(h.date_in(0, "03-20"), 1.5, 150, None),
+			],
+		)
+		self.assertEqual(len({r.fiscal_year for r in rows}), 2)
+		# the rows outside the period wait for their own slips and are paid once
+		self.assertEqual(
+			self.amount(self.slip((h.date_in(0, "03-16"), h.date_in(0, "03-31")), submit=True)), 150
+		)
+		self.assertEqual(
+			self.amount(self.slip((h.date_in(1, "02-01"), h.date_in(1, "02-14")), submit=True)), 100
+		)
 
 
 class TestPayrollDeductions(PayrollScenarioCase):
@@ -249,7 +289,7 @@ class TestPayrollSetup(PayrollScenarioCase):
 				"employee": self.employee,
 				"salary_structure": structure.name,
 				"company": h.COMPANY,
-				"from_date": f"{h.THIS_YEAR - 1}-06-01",
+				"from_date": f"{h.FY_YEAR - 1}-06-01",
 				"base": 1000,
 			}
 		).insert(ignore_permissions=True).submit()

@@ -293,11 +293,60 @@ class TestEscalatorScenarios(ScenarioCase):
 		self.assertEqual(self.total(second), 150)
 		p.make_credit_note(second, date=self.next_date())
 		deduction = [r for r in h.ledger(second.name) if r.entry_type == "Credit Note Deduction"]
-		self.assertEqual([flt(r.commission_amount) for r in deduction], [-150])
+		self.assertEqual([(flt(r.multiplier), flt(r.commission_amount)) for r in deduction], [(1.5, -150)])
 		self.assertEqual(self.total(second), 0)
 		self.assertEqual(
 			flt(sum(r.running_total_after - r.running_total_before for r in h.ledger(second.name))), 0
 		)
+
+
+class TestSettingsChangedMidYear(ScenarioCase):
+	def setUp(self):
+		super().setUp()
+		self.day = 0
+
+	def next_date(self):
+		self.day += 1
+		return add_days(h.date_in(0, "04-01"), self.day)
+
+	def invoice(self, amount=1000):
+		return h.make_invoice(
+			self.customer, [(self.item(), 1, amount)], team=self.team, date=self.next_date()
+		)
+
+	def paid(self, invoice):
+		p.pay(invoice, invoice.grand_total, date=self.next_date())
+		return invoice
+
+	def figures(self, invoice):
+		return [
+			(r.entry_type, flt(r.commission_factor), flt(r.multiplier), flt(r.commission_amount, 2))
+			for r in h.ledger(invoice.name)
+		]
+
+	def test_rows_already_posted_keep_their_figures_and_new_payments_use_the_new_settings(self):
+		h.set_target(self.person, h.fiscal_year_of(h.date_in(0, "04-01")), 1000)
+		first, second = self.paid(self.invoice()), self.paid(self.invoice())
+		waiting = self.invoice()
+		self.assertEqual(self.figures(first), [("Earned", 1, 1, 100)])
+		self.assertEqual(self.figures(second), [("Earned", 1, 1.5, 150)])
+		posted = {i.name: [r.name for r in h.ledger(i.name)] for i in (first, second)}
+
+		h.set_settings(factors=(0.5, 0.5), escalator_multiplier=2)
+		for invoice in (first, second):
+			sync_document("Sales Invoice", invoice.name)
+			self.assertEqual([r.name for r in h.ledger(invoice.name)], posted[invoice.name])
+		self.assertEqual(self.figures(first), [("Earned", 1, 1, 100)])
+		self.assertEqual(self.figures(second), [("Earned", 1, 1.5, 150)])
+
+		# made before the change but paid after it: its own factor of 1, the multiplier of the day it is paid
+		self.assertEqual(self.figures(self.paid(waiting)), [("Earned", 1, 2, 200)])
+		# made after the change: factor 0.5 and multiplier 2
+		self.assertEqual(self.figures(self.paid(self.invoice())), [("Earned", 0.5, 2, 100)])
+		# a credit note of a row posted before the change takes back what that row earned
+		p.make_credit_note(second, date=self.next_date())
+		deduction = [r for r in h.ledger(second.name) if r.entry_type == "Credit Note Deduction"]
+		self.assertEqual([(flt(r.multiplier), flt(r.commission_amount)) for r in deduction], [(1.5, -150)])
 
 
 class TestLedgerScenarios(ScenarioCase):

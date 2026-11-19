@@ -1,6 +1,7 @@
 import json
 
 import frappe
+from frappe import _
 from frappe.utils import flt
 
 from sales_commission.tests import helpers as h
@@ -153,7 +154,7 @@ class TestLedgerAndSafety(h.CommissionTestCase):
 			"doctype": doctype,
 			"customer": customer,
 			"company": h.COMPANY,
-			"transaction_date": frappe.utils.nowdate(),
+			"transaction_date": h.ANCHOR,
 			"items": [
 				{
 					"doctype": f"{doctype} Item",
@@ -195,7 +196,7 @@ class TestLedgerAndSafety(h.CommissionTestCase):
 		args["items"][0]["grant_commission"] = 0
 		line = get_line_commission(json.dumps(args))["lines"][0]
 		self.assertEqual(
-			(line["commission_classification"], line["commission_note"]), ("", "Grant Commission off")
+			(line["commission_classification"], line["commission_note"]), ("", _("Grant Commission off"))
 		)
 
 	def test_preview_only_for_orders_and_invoices(self):

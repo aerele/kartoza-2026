@@ -39,7 +39,7 @@ class ExpectedEntries:
 				ratio = person_ratio(row, person)
 				if not line * ratio:
 					continue
-				context = self.line_context(row, line * ratio)
+				context = self.line_context(row, line * ratio, grand_total)
 				notes_of_line = self.notes_for_line(notes, row, ratio)
 				for step in LineWalk(line * ratio, grand_total, slices, notes_of_line).run():
 					entries.append(self.entry(step, context, person, allocated))
@@ -53,9 +53,11 @@ class ExpectedEntries:
 	def line_commission(self, row):
 		return exact_commission(row, base=self.use_base)
 
-	def line_context(self, row, commission):
+	def line_context(self, row, commission, grand_total):
 		doc = self.doc
-		share = flt(row.base_net_amount) / flt(doc.base_net_total) if flt(doc.base_net_total) else 0
+		# sales count without tax: the line's net amount over the grand total the customer pays in
+		net = flt(row.base_net_amount if self.use_base else row.net_amount)
+		share = net / grand_total if grand_total else 0
 		return frappe._dict(
 			company=doc.company,
 			customer=doc.customer,

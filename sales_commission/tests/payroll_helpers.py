@@ -1,9 +1,9 @@
 """Salary component, structure and slips of the payroll flow tests."""
 
 import frappe
-from frappe.utils import get_first_day, get_last_day, nowdate
+from frappe.utils import get_first_day, get_last_day
 
-from sales_commission.tests.helpers import ABBR, COMPANY, THIS_YEAR, unique
+from sales_commission.tests.helpers import ABBR, ANCHOR, COMPANY, FY_YEAR, unique
 
 EXPENSE = f"Administrative Expenses - {ABBR}"
 COMMISSION_COMPONENT = "Test Sales Commission"
@@ -36,8 +36,8 @@ def ensure_holiday_list():
 			{
 				"doctype": "Holiday List",
 				"holiday_list_name": name,
-				"from_date": f"{THIS_YEAR - 1}-01-01",
-				"to_date": f"{THIS_YEAR}-12-31",
+				"from_date": f"{FY_YEAR - 1}-01-01",
+				"to_date": f"{FY_YEAR + 1}-12-31",
 			}
 		).insert(ignore_permissions=True)
 	frappe.db.set_value("Company", COMPANY, "default_holiday_list", name)
@@ -56,17 +56,19 @@ def ensure_holiday_list():
 
 
 def ensure_payroll_period():
-	if frappe.db.exists("Payroll Period", {"company": COMPANY, "start_date": f"{THIS_YEAR}-01-01"}):
-		return
-	frappe.get_doc(
-		{
-			"doctype": "Payroll Period",
-			"name": f"Commission Test {THIS_YEAR}",
-			"company": COMPANY,
-			"start_date": f"{THIS_YEAR}-01-01",
-			"end_date": f"{THIS_YEAR}-12-31",
-		}
-	).insert(ignore_permissions=True)
+	"""Calendar-year payroll periods of the test fiscal year and the one after it."""
+	for year in (FY_YEAR, FY_YEAR + 1):
+		if frappe.db.exists("Payroll Period", {"company": COMPANY, "start_date": f"{year}-01-01"}):
+			continue
+		frappe.get_doc(
+			{
+				"doctype": "Payroll Period",
+				"name": f"Commission Test {year}",
+				"company": COMPANY,
+				"start_date": f"{year}-01-01",
+				"end_date": f"{year}-12-31",
+			}
+		).insert(ignore_permissions=True)
 
 
 def make_structure_assignment(employee):
@@ -90,7 +92,7 @@ def make_structure_assignment(employee):
 			"employee": employee,
 			"salary_structure": structure.name,
 			"company": COMPANY,
-			"from_date": f"{THIS_YEAR - 1}-01-01",
+			"from_date": f"{FY_YEAR - 1}-01-01",
 			"base": 1000,
 		}
 	).insert(ignore_permissions=True).submit()
@@ -102,9 +104,9 @@ def make_slip(employee, start_date=None, end_date=None, submit=False):
 			"doctype": "Salary Slip",
 			"employee": employee,
 			"company": COMPANY,
-			"posting_date": end_date or nowdate(),
-			"start_date": start_date or get_first_day(nowdate()),
-			"end_date": end_date or get_last_day(nowdate()),
+			"posting_date": end_date or ANCHOR,
+			"start_date": start_date or get_first_day(ANCHOR),
+			"end_date": end_date or get_last_day(ANCHOR),
 		}
 	)
 	slip.insert(ignore_permissions=True)

@@ -1,5 +1,5 @@
 import frappe
-from frappe.utils import add_days, flt
+from frappe.utils import add_days, flt, fmt_money
 
 from sales_commission.tests import helpers as h
 from sales_commission.tests import payment_helpers as p
@@ -34,6 +34,9 @@ class TestEscalator(h.CommissionTestCase):
 
 	def target(self, amount, date=None):
 		h.set_target(self.person, h.fiscal_year_of(date or h.date_in(0, "04-01")), amount)
+
+	def year_to_date(self):
+		return flt(year_to_date_sales(self.person, h.fiscal_year_of(h.date_in(0, "04-01"))))
 
 	def shape(self, invoice):
 		"""(multiplier, running total before, after, commission) of each live Earned row."""
@@ -142,6 +145,88 @@ class TestEscalator(h.CommissionTestCase):
 		self.assertNotEqual(row.fiscal_year, h.fiscal_year_of(last_year))
 		self.assertEqual(row.fiscal_year, h.fiscal_year_of(this_year))
 
+	def paid_with_vat(self, net, percent=10):
+		"""Pays a whole invoice of the net amount plus 15% VAT, dated after the earlier ones."""
+		date = self.next_date()
+		item = h.make_item(self.group, percent=percent)
+		invoice = h.make_invoice(
+			self.customer, [(item, 1, net)], team=[(self.person, 100)], date=date, taxes=h.vat_rows()
+		)
+		p.pay(invoice, invoice.grand_total, date=date)
+		return invoice
+
+	def test_vat_does_not_count_towards_the_target(self):
+		self.target(1500)
+		first, second = self.paid_with_vat(1000), self.paid_with_vat(1000)
+		self.assertEqual(first.grand_total, 1150)
+		self.assertEqual(self.shape(first), [(1, 0, 1000, 100)])
+		# the multiplier starts at the net target of 1500, not at the 1150 + 1150 paid
+		self.assertEqual(self.shape(second), [(1, 1000, 1500, 50), (1.5, 1500, 2000, 75)])
+		self.assertEqual([flt(r.eligible_amount) for r in h.ledger(first.name)], [1000])
+		self.assertEqual([flt(r.eligible_amount) for r in h.ledger(second.name)], [500, 500])
+		self.assertEqual(self.year_to_date(), 2000)
+
+	def test_part_payments_of_a_vat_invoice_count_their_net_share(self):
+		self.target(1500)
+		invoice = h.make_invoice(
+			self.customer,
+			[(h.make_item(self.group, percent=10), 1, 2500)],
+			team=[(self.person, 100)],
+			date=self.next_date(),
+			taxes=h.vat_rows(),
+		)
+		self.assertEqual(invoice.grand_total, 2875)
+		p.pay(invoice, 1150, date=self.next_date())
+		p.pay(invoice, 1725, date=self.next_date())
+		# 1150 of 2875 is 40% of the net 2500 = 1000, the rest is 1500
+		self.assertEqual(
+			self.shape(invoice), [(1, 0, 1000, 100), (1, 1000, 1500, 50), (1.5, 1500, 2500, 150)]
+		)
+		self.assertEqual(self.year_to_date(), 2500)
+
+	def test_invoice_crossing_the_target_gives_its_lines_the_room_in_line_order(self):
+		self.target(1000)
+		self.paid(800)
+		date = self.next_date()
+		low, high = h.make_item(self.group, percent=5), h.make_item(self.group, percent=10)
+		invoice = h.make_invoice(
+			self.customer, [(low, 1, 500), (high, 1, 500)], team=[(self.person, 100)], date=date
+		)
+		p.pay(invoice, 1000, date=date)
+		by_line = {}
+		for row in h.ledger(invoice.name):
+			by_line.setdefault(row.reference_row, []).append(
+				(
+					flt(row.multiplier),
+					flt(row.running_total_before),
+					flt(row.running_total_after),
+					flt(row.eligible_amount),
+					flt(row.commission_amount),
+				)
+			)
+		# the first line takes the 200 left below the target, the second one is all above it
+		self.assertEqual(
+			by_line[invoice.items[0].name], [(1, 800, 1000, 200, 10), (1.5, 1000, 1300, 300, 22.5)]
+		)
+		self.assertEqual(by_line[invoice.items[1].name], [(1.5, 1300, 1800, 500, 75)])
+		self.assertEqual(flt(sum(r.commission_amount for r in h.ledger(invoice.name))), 107.5)
+		self.assertEqual(self.year_to_date(), 1800)
+
+	def test_foreign_invoice_counts_in_rand_at_the_payment_rate(self):
+		self.target(1500)
+		self.paid(1000)
+		date = self.next_date()
+		customer = h.make_customer("USD")
+		item = h.make_item(self.group, percent=10)
+		invoice = h.make_invoice(
+			customer, [(item, 1, 100)], team=[(self.person, 100)], date=date, currency="USD", rate=18
+		)
+		p.pay(invoice, 100, date=date, rate=19)
+		# 100 USD paid at 19 is 1900 rand: 500 up to the target, 1400 above it
+		self.assertEqual(self.shape(invoice), [(1, 1000, 1500, 50), (1.5, 1500, 2900, 210)])
+		self.assertEqual([flt(r.eligible_amount) for r in h.ledger(invoice.name)], [500, 1400])
+		self.assertEqual(self.year_to_date(), 2900)
+
 	def test_reversal_below_target_returns_to_one(self):
 		self.target(1500)
 		first, _ = self.paid(1000)
@@ -231,9 +316,6 @@ class TestEscalator(h.CommissionTestCase):
 			if r.entry_type == "Credit Note Deduction"
 		]
 
-	def year_to_date(self):
-		return flt(year_to_date_sales(self.person, h.fiscal_year_of(h.date_in(0, "04-01"))))
-
 	def test_a_return_comes_off_the_part_above_the_target_first(self):
 		invoice = self.kumar()
 		p.make_credit_note(invoice, lines={0: 15}, date=add_days(self.next_date(), 1))
@@ -308,3 +390,56 @@ class TestEscalator(h.CommissionTestCase):
 			[(1.5, -7500, 500000, 400000), (1, -12500, 400000, 150000)],
 		)
 		self.assertEqual(self.year_to_date(), 150000)
+
+	def crossing(self, pay=True):
+		"""Target 20,000 at 10%: 10,000 paid before, then 3 x 5,000 split 10,000 at 1 and 5,000 at 1.5."""
+		self.target(20000)
+		self.paid(10000)
+		if pay:
+			return self.paid(15000, qty=3)[1]
+		return h.make_invoice(
+			self.customer,
+			[(h.make_item(self.group, percent=10), 3, 5000)],
+			team=[(self.person, 100)],
+			date=self.next_date(),
+		)
+
+	def return_of(self, invoice, qty):
+		note = p.make_credit_note(invoice, lines={0: qty}, date=add_days(self.next_date(), 1))
+		line = note.items[0]
+		taken = flt(sum(r.commission_amount for r in h.ledger(invoice.name) if r.credit_note == note.name), 2)
+		return line, taken, note
+
+	def test_a_return_estimate_takes_the_part_above_the_target_first(self):
+		line, taken, note = self.return_of(self.crossing(), 1)
+		self.assertEqual((flt(line.commission_amount), taken), (-750, -750))
+		self.assertEqual(line.target_multiplier, f"1.5 ({fmt_money(5000, currency='ZAR')})")
+		self.assertEqual(flt(note.sales_team[0].incentives), -750)
+
+	def test_a_return_bigger_than_the_part_above_the_target_lists_both_parts(self):
+		line, taken, _note = self.return_of(self.crossing(), 2)
+		self.assertEqual((flt(line.commission_amount), taken), (-1250, -1250))
+		self.assertEqual(
+			line.target_multiplier,
+			f"1.5 ({fmt_money(5000, currency='ZAR')}), 1 ({fmt_money(5000, currency='ZAR')})",
+		)
+
+	def test_the_second_return_continues_with_the_part_within_the_target(self):
+		invoice = self.crossing()
+		self.return_of(invoice, 1)
+		line, taken, _note = self.return_of(invoice, 1)
+		self.assertEqual((flt(line.commission_amount), taken), (-500, -500))
+		self.assertEqual(line.target_multiplier, f"1 ({fmt_money(5000, currency='ZAR')})")
+
+	def test_a_return_of_a_line_below_the_target_keeps_one_multiplier(self):
+		self.target(100000)
+		line, taken, _note = self.return_of(self.paid(15000, qty=3)[1], 1)
+		self.assertEqual((flt(line.commission_amount), taken), (-500, -500))
+		self.assertEqual(line.target_multiplier, "1")
+
+	def test_a_return_of_an_unpaid_crossing_invoice_keeps_the_blended_estimate(self):
+		# nothing is paid, so the ledger has no split yet and no deduction: the original's blended multiplier
+		invoice = self.crossing(pay=False)
+		line, taken, _note = self.return_of(invoice, 1)
+		self.assertEqual(taken, 0)
+		self.assertEqual(flt(line.commission_amount), flt(-500 * 7 / 6, 2))

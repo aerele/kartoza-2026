@@ -1,6 +1,6 @@
 import frappe
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import make_sales_return
-from frappe.utils import add_days, flt, getdate, nowdate
+from frappe.utils import add_days, flt, getdate
 
 from sales_commission.tests import helpers as h
 from sales_commission.tests import payment_helpers as p
@@ -27,7 +27,7 @@ class TestCreditNotes(h.CommissionTestCase):
 		]
 		team = [(person or self.person, 100)]
 		return h.make_invoice(
-			h.make_customer(), [(item, 1, 100) for item in lines], team=team, date=add_days(nowdate(), -5)
+			h.make_customer(), [(item, 1, 100) for item in lines], team=team, date=h.anchor_date(-5)
 		)
 
 	def ytd(self, invoice):
@@ -40,18 +40,18 @@ class TestCreditNotes(h.CommissionTestCase):
 
 	def test_return_of_unpaid_line_pays_the_rest_of_the_others(self):
 		invoice = self.spread_invoice()
-		p.pay(invoice, 200, date=add_days(nowdate(), -3))
+		p.pay(invoice, 200, date=h.anchor_date(-3))
 		self.assertEqual(self.total(invoice), 6.66)
 		p.make_credit_note(invoice, {1: 1})
 		self.assertEqual(self.total(invoice), 10)
-		catch_up = [r for r in h.ledger(invoice.name) if r.posting_date == getdate(nowdate())]
+		catch_up = [r for r in h.ledger(invoice.name) if r.posting_date == getdate(h.ANCHOR)]
 		self.assertEqual([flt(r.commission_amount, 2) for r in catch_up], [1.67, 1.67])
 		self.assertEqual({r.entry_type for r in catch_up}, {"Earned"})
 		self.assertEqual(self.ytd(invoice), 200)
 
 	def test_reconciling_the_return_later_changes_nothing(self):
 		invoice = self.spread_invoice()
-		p.pay(invoice, 200, date=add_days(nowdate(), -3))
+		p.pay(invoice, 200, date=h.anchor_date(-3))
 		note = p.make_credit_note(invoice, {1: 1}, submit=False)
 		note.update_outstanding_for_self = 1
 		note.save(ignore_permissions=True)
@@ -86,14 +86,24 @@ class TestCreditNotes(h.CommissionTestCase):
 
 	def test_catch_up_is_shared_by_the_payments_in_proportion(self):
 		invoice = self.spread_invoice()
-		first = p.pay(invoice, 100, date=add_days(nowdate(), -3))
-		second = p.pay(invoice, 100, date=add_days(nowdate(), -2))
+		first = p.pay(invoice, 60, date=h.anchor_date(-3))
+		second = p.pay(invoice, 140, date=h.anchor_date(-2))
 		p.make_credit_note(invoice, {1: 1})
 		self.assertEqual(self.total(invoice), 10)
-		for payment in (first, second):
+		# 60 and 140 of the 200 still owed: 30% and 70% of the 10 (each row rounds, so the catch-up of the second is 2.34)
+		for payment, expected in ((first, 3), (second, 7)):
 			rows = [r for r in h.ledger(invoice.name) if r.payment_name == payment.name]
-			self.assertEqual(flt(sum(r.commission_amount for r in rows), 2), 5)
+			self.assertEqual(flt(sum(r.commission_amount for r in rows), 2), expected)
 			self.assertEqual(len(rows), 4)
+		catch_up = [r for r in h.ledger(invoice.name) if r.posting_date == getdate(h.ANCHOR)]
+		by_payment = {}
+		for row in catch_up:
+			by_payment[row.payment_name] = by_payment.get(row.payment_name, 0) + flt(row.commission_amount)
+		self.assertEqual(
+			{name: flt(amount, 2) for name, amount in by_payment.items()},
+			{first.name: 1, second.name: 2.34},
+		)
+		self.assertEqual(self.ytd(invoice), 200)
 
 	def test_cancelled_credit_note_takes_the_catch_up_back(self):
 		invoice = self.spread_invoice()
@@ -110,7 +120,7 @@ class TestCreditNotes(h.CommissionTestCase):
 			h.make_customer(), [(h.make_item(self.group, percent=5), 1, 1000)], team=self.team
 		)
 		p.pay(earlier, 1000)
-		h.set_target(self.person, h.fiscal_year_of(nowdate()), 500)
+		h.set_target(self.person, h.fiscal_year_of(h.ANCHOR), 500)
 		invoice = self.spread_invoice()
 		p.pay(invoice, 200)
 		p.make_credit_note(invoice, {1: 1})
@@ -164,7 +174,7 @@ class TestCreditNotes(h.CommissionTestCase):
 	def unlinked_note(self, invoice, item, qty=1, rate=2760):
 		"""A credit note against the invoice whose line is not linked to an invoice line."""
 		note = make_sales_return(invoice.name)
-		note.posting_date = nowdate()
+		note.posting_date = h.ANCHOR
 		note.set_posting_time = 1
 		note.items = note.items[:1]
 		note.items[0].item_code = item
@@ -245,15 +255,15 @@ class TestCreditNotes(h.CommissionTestCase):
 
 	def paid_invoice_with_note(self):
 		invoice = self.spread_invoice()
-		p.pay(invoice, 300, date=add_days(nowdate(), -4))
-		note = p.make_credit_note(invoice, {0: 1}, date=add_days(nowdate(), -3))
+		p.pay(invoice, 300, date=h.anchor_date(-4))
+		note = p.make_credit_note(invoice, {0: 1}, date=h.anchor_date(-3))
 		return invoice, note
 
 	def test_refund_shows_on_the_deduction_rows_without_changing_them(self):
 		invoice, note = self.paid_invoice_with_note()
 		self.assertEqual(self.refund_of(invoice), {(None, None, None)})
 		before = [(r.name, r.commission_amount, r.entry_type) for r in h.ledger(invoice.name)]
-		refund = p.refund(note, date=add_days(nowdate(), -1))
+		refund = p.refund(note, date=h.anchor_date(-1))
 		self.assertEqual(refund.payment_type, "Pay")
 		self.assertEqual(
 			self.refund_of(invoice), {("Payment Entry", refund.name, getdate(refund.posting_date))}
@@ -268,8 +278,8 @@ class TestCreditNotes(h.CommissionTestCase):
 
 	def test_the_latest_refund_is_shown_and_cancelling_goes_back(self):
 		invoice, note = self.paid_invoice_with_note()
-		first = p.refund(note, 40, date=add_days(nowdate(), -2))
-		second = p.refund(note, 40, date=add_days(nowdate(), -1))
+		first = p.refund(note, 40, date=h.anchor_date(-2))
+		second = p.refund(note, 40, date=h.anchor_date(-1))
 		self.assertEqual({r[1] for r in self.refund_of(invoice)}, {second.name})
 		second.cancel()
 		self.assertEqual({r[1] for r in self.refund_of(invoice)}, {first.name})
@@ -283,7 +293,7 @@ class TestCreditNotes(h.CommissionTestCase):
 			invoice.customer,
 			[(h.make_item(self.group), 1, 100)],
 			team=self.team,
-			date=add_days(nowdate(), -2),
+			date=h.anchor_date(-2),
 		)
 		p.reconcile(invoice.customer)
 		journals = frappe.get_all(
