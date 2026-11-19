@@ -97,6 +97,7 @@ class TestPayroll(h.CommissionTestCase):
 		other = pr.make_slip(self.employee, h.date_in(0, "04-15"), h.date_in(0, "05-15"))
 		self.assertIsNone(pr.commission_row(other))
 
+	# the code dates a reversal by the clock (today), so the slips that must hold one cover today's month
 	def test_payment_cancelled_after_the_slip_is_a_normal_reversal(self):
 		_invoice, payment = self.pay_invoice(1000, h.date_in(0, "04-10"))
 		self.april_slip(submit=True)

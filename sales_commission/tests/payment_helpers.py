@@ -2,9 +2,9 @@
 
 import frappe
 from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
-from frappe.utils import flt, nowdate
+from frappe.utils import flt
 
-from sales_commission.tests.helpers import ABBR, BANK, COMPANY, make_receivable, unique
+from sales_commission.tests.helpers import ABBR, ANCHOR, BANK, COMPANY, make_receivable, unique
 
 
 def make_bank():
@@ -26,7 +26,7 @@ def make_bank():
 def pay(doc, amount, date=None, rate=None):
 	"""Payment Entry against a Sales Invoice or Sales Order. rate: payment currency to ZAR."""
 	entry = get_payment_entry(doc.doctype, doc.name, party_amount=amount, bank_account=make_bank())
-	entry.posting_date = date or nowdate()
+	entry.posting_date = date or ANCHOR
 	entry.reference_no = unique("REF")
 	entry.reference_date = entry.posting_date
 	if rate:
@@ -56,7 +56,7 @@ def pay_many(allocations, date=None):
 			},
 		)
 	entry.paid_amount = entry.received_amount = sum(part for _invoice, part in allocations)
-	entry.posting_date = date or nowdate()
+	entry.posting_date = date or ANCHOR
 	entry.reference_no = unique("REF")
 	entry.reference_date = entry.posting_date
 	entry.insert(ignore_permissions=True)
@@ -71,7 +71,7 @@ def unallocated_payment(customer, amount, currency="ZAR", rate=1, date=None):
 			"doctype": "Payment Entry",
 			"payment_type": "Receive",
 			"company": COMPANY,
-			"posting_date": date or nowdate(),
+			"posting_date": date or ANCHOR,
 			"party_type": "Customer",
 			"party": customer,
 			"paid_from": receivable_of(currency),
@@ -83,7 +83,7 @@ def unallocated_payment(customer, amount, currency="ZAR", rate=1, date=None):
 			"source_exchange_rate": rate,
 			"target_exchange_rate": 1,
 			"reference_no": unique("REF"),
-			"reference_date": date or nowdate(),
+			"reference_date": date or ANCHOR,
 		}
 	)
 	entry.insert(ignore_permissions=True)
@@ -102,9 +102,9 @@ def journal_payment(invoice, amount, date=None):
 			"doctype": "Journal Entry",
 			"voucher_type": "Bank Entry",
 			"company": COMPANY,
-			"posting_date": date or nowdate(),
+			"posting_date": date or ANCHOR,
 			"cheque_no": unique("CHQ"),
-			"cheque_date": date or nowdate(),
+			"cheque_date": date or ANCHOR,
 			"accounts": [
 				{"account": make_bank(), "debit_in_account_currency": amount},
 				{
@@ -147,7 +147,7 @@ def invoice_from_order(order, quantities=None, date=None, submit=True):
 	from erpnext.selling.doctype.sales_order.sales_order import make_sales_invoice
 
 	invoice = make_sales_invoice(order.name)
-	invoice.posting_date = date or nowdate()
+	invoice.posting_date = date or ANCHOR
 	invoice.set_posting_time = 1
 	invoice.due_date = invoice.posting_date
 	if quantities:
@@ -165,7 +165,7 @@ def refund(note, amount=None, date=None):
 	entry = get_payment_entry(
 		"Sales Invoice", note.name, party_amount=-abs(amount) if amount else None, bank_account=make_bank()
 	)
-	entry.posting_date = date or nowdate()
+	entry.posting_date = date or ANCHOR
 	entry.reference_no = unique("REF")
 	entry.reference_date = entry.posting_date
 	entry.insert(ignore_permissions=True)
@@ -178,7 +178,7 @@ def make_credit_note(invoice, lines=None, date=None, submit=True):
 	from erpnext.accounts.doctype.sales_invoice.sales_invoice import make_sales_return
 
 	note = make_sales_return(invoice.name)
-	note.posting_date = date or nowdate()
+	note.posting_date = date or ANCHOR
 	note.set_posting_time = 1
 	if lines:
 		note.items = [row for i, row in enumerate(note.items) if i in lines]

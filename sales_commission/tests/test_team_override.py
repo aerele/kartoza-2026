@@ -97,6 +97,23 @@ class TestSalesTeam(h.CommissionTestCase):
 		with self.assertRaisesRegex(frappe.ValidationError, "is a group"):
 			customer.save()
 
+	def test_customer_form_refuses_a_group_sales_person(self):
+		group_person = self.make_group_person()
+		customer = frappe.get_doc("Customer", h.make_customer())
+		customer.append("sales_team", {"sales_person": group_person, "allocated_percentage": 100})
+		with self.assertRaisesRegex(frappe.ValidationError, "is a group") as error:
+			customer.save()
+		self.assertIn(group_person, str(error.exception))
+		self.assertEqual(
+			frappe.db.count("Sales Team", {"parent": customer.name, "parenttype": "Customer"}), 0
+		)
+		customer.reload()
+		customer.append("sales_team", {"sales_person": self.first, "allocated_percentage": 100})
+		customer.save()
+		self.assertEqual(
+			frappe.db.get_value("Sales Team", {"parent": customer.name}, "sales_person"), self.first
+		)
+
 	def test_commission_is_split_by_allocated_percentage(self):
 		item = h.make_item(self.group, percent=5)
 		invoice = h.make_invoice(h.make_customer(), [(item, 1, 1000)], team=self.team)

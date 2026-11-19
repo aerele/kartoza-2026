@@ -1,3 +1,4 @@
+from frappe import _
 from frappe.utils import flt
 
 from sales_commission.utils.history import SalesHistory
@@ -65,9 +66,9 @@ class LineCalculator:
 		row.commission_percent = self.rates.get_percent(row.item_code)
 		row.commission_factor = self.rates.get_factor(row.commission_classification)
 		if not row.commission_percent:
-			row.commission_note = NO_RATE_NOTE
+			row.commission_note = _(NO_RATE_NOTE)
 		elif not self.rates.has_factor(row.commission_classification):
-			row.commission_note = NO_FACTOR_NOTE
+			row.commission_note = _(NO_FACTOR_NOTE)
 
 	def follow_net_amount(self, row):
 		"""A stored line keeps its amount when only a cent fix separates it from the new value."""
@@ -79,9 +80,9 @@ class LineCalculator:
 
 	def excluded_reason(self, row):
 		if not row.get("grant_commission"):
-			return NOT_GRANTED_NOTE
+			return _(NOT_GRANTED_NOTE)
 		if not self.plain and (self.links.is_cart_doc() or self.links.is_cart_line(row)):
-			return CART_NOTE
+			return _(CART_NOTE)
 		return None
 
 	def copy_from_order(self, row):

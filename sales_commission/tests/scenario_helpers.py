@@ -2,7 +2,7 @@
 
 import frappe
 from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
-from frappe.utils import flt, nowdate
+from frappe.utils import flt
 
 from sales_commission.tests import helpers as h
 from sales_commission.tests.payment_helpers import make_bank
@@ -36,7 +36,7 @@ def make_person_for_employee(employee, rate=None):
 def overpay(invoice, allocated, paid, date=None):
 	"""A Payment Entry that pays more than it allocates to the invoice (the rest stays unallocated)."""
 	entry = get_payment_entry(invoice.doctype, invoice.name, party_amount=allocated, bank_account=make_bank())
-	entry.posting_date = date or nowdate()
+	entry.posting_date = date or h.ANCHOR
 	entry.reference_no = h.unique("REF")
 	entry.reference_date = entry.posting_date
 	entry.paid_amount = entry.received_amount = paid
