@@ -4,21 +4,14 @@ from frappe.utils import flt
 
 
 class Escalator:
-	"""Sets fiscal year, target, running totals and multiplier on a new positive ledger entry."""
+	"""Sets the fiscal year and the year-to-date paid sales before and after each new ledger row."""
 
 	def __init__(self):
 		self.totals = {}
-		self.targets = {}
 
-	def split(self, entry, recognised):
-		"""Sets the fiscal year; returns (multiplier, sales) parts of the row: up to the target at 1, above it at the multiplier."""
+	def set_fiscal_year(self, entry):
+		"""The fiscal year of the row's posting date, which its year-to-date sales belong to."""
 		entry.fiscal_year = get_fiscal_year(entry.posting_date, company=entry.company)[0]
-		target = self.target(entry.sales_person, entry.fiscal_year)
-		before = 0.0
-		if entry.sales_person:
-			before = self.running_total(entry.sales_person, entry.fiscal_year)
-		multiplier = flt(frappe.get_cached_doc("Commission Settings").escalator_multiplier)
-		return split_at_target(before, flt(recognised), target, multiplier)
 
 	def stamp(self, row, recognised):
 		"""Year-to-date sales before and after the row; the difference is what the row counts."""
@@ -27,13 +20,6 @@ class Escalator:
 			before = self.running_total(row.sales_person, row.fiscal_year)
 		row.running_total_before = before
 		row.running_total_after = flt(before + flt(recognised), 2)
-
-	def target(self, sales_person, fiscal_year):
-		"""Sales Person > Targets of the fiscal year without an Item Group, read once per sync."""
-		key = (sales_person, fiscal_year)
-		if key not in self.targets:
-			self.targets[key] = annual_target(sales_person, fiscal_year)
-		return self.targets[key]
 
 	def running_total(self, sales_person, fiscal_year):
 		"""Read once per person and year in a sync, then carried forward row by row."""

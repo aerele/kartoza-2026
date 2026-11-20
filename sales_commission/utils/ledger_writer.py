@@ -9,6 +9,7 @@ from sales_commission.utils.ledger_rows import (
 	top_first,
 )
 from sales_commission.utils.line_factors import LineFactors
+from sales_commission.utils.target_sales import DocumentSplits
 
 
 class LedgerWriter:
@@ -21,6 +22,7 @@ class LedgerWriter:
 		self.escalator = escalator
 		self.settings = settings
 		self.line_factors = LineFactors(doctype, name)
+		self.document_splits = DocumentSplits(doctype, name)
 
 	def cancel_key(self, entry):
 		"""Unpaid rows are marked cancelled like a GL Entry, rows already on a slip get a normal reversal."""
@@ -36,6 +38,7 @@ class LedgerWriter:
 
 	def cancel_unpaid_rows(self, entry, rows):
 		old = self.ledger.totals_of(rows)
+		before = self.live_total(old.latest)
 		frappe.db.set_value(
 			"Commission Ledger",
 			{"name": ["in", [r.name for r in rows]]},
@@ -44,8 +47,14 @@ class LedgerWriter:
 		)
 		self.escalator.forget()
 		if self.holds_value(old):
-			self.insert_cancelled_reverse(entry, old)
+			self.insert_cancelled_reverse(entry, old, before)
 		self.ledger.drop_rows(entry.key, rows)
+
+	def live_total(self, source):
+		"""Year-to-date sales while the rows being cancelled still count."""
+		if not (source and source.sales_person and source.fiscal_year):
+			return 0.0
+		return self.escalator.running_total(source.sales_person, source.fiscal_year)
 
 	def reverse_paid_rows(self, entry, old):
 		"""Rows already paid on a salary slip stay live: a normal reversal is taken off a later slip."""
@@ -55,7 +64,7 @@ class LedgerWriter:
 	def holds_value(self, old):
 		return any(flt(old[name]) for name in ("earned", "paid", "zar", "base", "recognised"))
 
-	def insert_cancelled_reverse(self, entry, old):
+	def insert_cancelled_reverse(self, entry, old, before):
 		source = old.latest
 		row = self.base_row(entry)
 		row.update(
@@ -73,7 +82,9 @@ class LedgerWriter:
 			payment_date=source.payment_date,
 			is_cancelled=1,
 		)
-		self.escalator.stamp(row, flt(-old.recognised, PRECISION))
+		# starts from the total that still holds the cancelled rows, so their sales come off only once
+		row.running_total_before = before
+		row.running_total_after = flt(before - flt(old.recognised, PRECISION), 2)
 		self.line_factors.set_net_amounts(row)
 		frappe.get_doc(row).insert(ignore_permissions=True)
 

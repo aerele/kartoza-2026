@@ -199,6 +199,7 @@ doc_events = {
 		"on_cancel": "sales_commission.utils.payroll.release_ledger_on_cancel",
 	},
 	"Sales Order": {
+		"before_submit": "sales_commission.utils.target_sales.freeze_split",
 		"validate": [
 			"sales_commission.utils.sales_team.validate_sales_person_employee",
 			"sales_commission.utils.validation.calculate_commission",
@@ -210,6 +211,7 @@ doc_events = {
 		"on_change": "sales_commission.utils.sync.sync_on_change",
 	},
 	"Sales Invoice": {
+		"before_submit": "sales_commission.utils.target_sales.freeze_split",
 		"validate": [
 			"sales_commission.utils.sales_team.validate_sales_person_employee",
 			"sales_commission.utils.validation.calculate_commission",

@@ -1,6 +1,6 @@
 from sales_commission.utils.calculation import LineCalculator
 from sales_commission.utils.credit_note import CreditNoteLines
-from sales_commission.utils.line_fields import has_stored_commission, set_totals
+from sales_commission.utils.line_fields import clear_line, has_stored_commission, set_totals
 from sales_commission.utils.sales_team import set_incentives
 from sales_commission.utils.target_estimate import TargetMultipliers
 
@@ -10,8 +10,12 @@ def calculate_commission(doc, method=None):
 	multipliers = TargetMultipliers(doc)
 	if doc.get("is_return"):
 		CreditNoteLines(doc).apply()
-	else:
+	elif has_sales_person(doc):
 		LineCalculator(doc, multipliers=multipliers).apply()
+	else:
+		# the % and the annual target belong to the salesperson, so nothing is worked out without one
+		for row in doc.items:
+			clear_line(row)
 	set_totals(doc)
 	set_incentives(doc, multipliers)
 
@@ -25,3 +29,7 @@ def update_commission_after_submit(doc, method=None):
 	LineCalculator(doc, keep_stored=True, multipliers=multipliers).apply()
 	set_totals(doc)
 	set_incentives(doc, multipliers)
+
+
+def has_sales_person(doc):
+	return any(row.sales_person for row in doc.get("sales_team") or [])

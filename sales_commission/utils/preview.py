@@ -27,7 +27,6 @@ def get_line_commission(doc):
 				"commission_classification": row.commission_classification or "",
 				"commission_percent": flt(row.commission_percent),
 				"commission_factor": flt(row.commission_factor),
-				"commission_note": row.commission_note or "",
 				"commission_amount": flt(row.commission_amount),
 				"base_commission_amount": flt(row.base_commission_amount),
 				"target_multiplier": row.target_multiplier or "",

@@ -27,17 +27,10 @@ def line_fields(insert_after):
 		},
 		{
 			**common,
-			"fieldname": "commission_note",
-			"label": "Commission Note",
-			"fieldtype": "Data",
-			"insert_after": "commission_classification",
-		},
-		{
-			**common,
 			"fieldname": "commission_percent",
 			"label": "Commission %",
 			"fieldtype": "Percent",
-			"insert_after": "commission_note",
+			"insert_after": "commission_classification",
 		},
 		{
 			**common,
@@ -109,6 +102,15 @@ def header_fields(insert_after):
 			"options": COMPANY_CURRENCY,
 			"insert_after": "total_commission_amount",
 		},
+		{
+			**totals,
+			"fieldname": "commission_target_split",
+			"label": "Annual Target Split",
+			"fieldtype": "Small Text",
+			"hidden": 1,
+			"insert_after": "base_total_commission_amount",
+			"description": "x1 / escalator split of this document, frozen when it is submitted",
+		},
 	]
 
 
@@ -169,3 +171,15 @@ def hide_sales_team_commission_rate():
 			continue
 		make_property_setter("Sales Team", "commission_rate", property_name, int(value), "Check")
 		frappe.db.set_value("Property Setter", name, "module", "Sales Commission")
+
+
+REMOVED_FIELDS = {"Sales Order Item": ["commission_note"], "Sales Invoice Item": ["commission_note"]}
+
+
+def remove_old_fields():
+	"""Delete fields the app no longer uses from sites that still have them."""
+	for doctype, fieldnames in REMOVED_FIELDS.items():
+		for fieldname in fieldnames:
+			name = frappe.db.get_value("Custom Field", {"dt": doctype, "fieldname": fieldname})
+			if name:
+				frappe.delete_doc("Custom Field", name, ignore_permissions=True)

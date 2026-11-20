@@ -5,6 +5,7 @@ from sales_commission.setup.custom_fields import (
 	hide_sales_team_commission_rate,
 	hide_standard_commission_section,
 	make_target_distribution_optional,
+	remove_old_fields,
 )
 
 
@@ -18,6 +19,7 @@ def after_install():
 
 def after_migrate():
 	create_commission_fields()
+	remove_old_fields()
 	hide_standard_commission_section()
 	make_target_distribution_optional()
 	hide_sales_team_commission_rate()

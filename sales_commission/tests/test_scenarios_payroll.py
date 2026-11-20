@@ -481,20 +481,25 @@ class TestAdvanceMovedAfterPayroll(PayrollScenarioCase):
 			],
 		)
 
-	def test_target_crossed_between_the_advance_and_the_invoice_does_not_reprice_the_moved_advance(self):
+	def test_moved_advance_keeps_the_order_split_after_the_target_is_crossed(self):
 		h.set_target(self.person, h.fiscal_year_of(h.date_in(0, "04-10")), 3000)
+		# the 5,000 order counts first: 3,000 within the target (60%), 2,000 above it (40%)
 		order = self.order_with_advance()
+		advance = sorted((flt(r.multiplier), flt(r.commission_amount)) for r in h.ledger(order.name))
+		self.assertEqual(advance, [(1, 60), (1.5, 60)])
+		# the 2,500 invoice comes after the order, so it is all above the target: 250 x 1.5
 		self.paid(2500, h.date_in(0, "04-12"))
-		self.assertEqual(self.amount(self.slip(APRIL, submit=True)), 375)
-		before = year_to_date_sales(self.person, h.fiscal_year_of(h.date_in(0, "05-15")))
-		self.assertEqual(before, 3500)
+		self.assertEqual(self.amount(self.slip(APRIL, submit=True)), 495)
 		invoice = self.take_advance(order, h.date_in(0, "05-15"))
-		moved = next(r for r in h.ledger(invoice.name) if r.entry_type == "Advance Adjustment")
-		self.assertEqual((flt(moved.multiplier), flt(moved.commission_amount)), (1, 100))
-		self.assertEqual(year_to_date_sales(self.person, moved.fiscal_year), before)
-		# the balance is new money after the target was crossed (the 2,500 payment earned 200 + 75)
+		moved = sorted(
+			(flt(r.multiplier), flt(r.commission_amount))
+			for r in h.ledger(invoice.name)
+			if r.entry_type == "Advance Adjustment"
+		)
+		self.assertEqual(moved, advance)
+		# the balance of the order's invoice follows the order split: 240 at 1 and 160 x 1.5
 		p.pay(invoice, 4000, date=h.date_in(0, "05-20"))
-		self.assertEqual(self.amount(self.slip(MAY)), 600)
+		self.assertEqual(self.amount(self.slip(MAY)), 480)
 
 	def test_part_of_a_paid_advance_moved_stamps_only_that_part(self):
 		first, second = h.make_item(h.make_group(), percent=10), h.make_item(h.make_group(), percent=10)

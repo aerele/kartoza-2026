@@ -5,7 +5,6 @@
 		"commission_classification",
 		"commission_percent",
 		"commission_factor",
-		"commission_note",
 		"commission_amount",
 		"base_commission_amount",
 		"target_multiplier",
@@ -121,6 +120,8 @@
 	// after a draft is saved, show the commission of each line so the user can check it
 	function show_commission_summary(frm) {
 		if (frm.doc.docstatus !== 0 || frm.doc.is_return) return;
+		// commission and the annual target belong to the salesperson, so there is nothing to show without one
+		if (!(frm.doc.sales_team || []).some((row) => row.sales_person)) return;
 		const lines = (frm.doc.items || [])
 			.filter((row) => row.commission_classification)
 			.map((row) => ({
@@ -233,18 +234,34 @@
 		show_as_read_only(dialog.fields_dict.lines.grid);
 	}
 
+	// fixed shares of the dialog width, so the table always fits without a sideways scrollbar
+	const COLUMN_SHARES = {
+		row_no: 1,
+		item_code: 2,
+		item_group: 2,
+		classification: 2,
+		factor: 2,
+		commission_amount: 2,
+	};
+
 	// a grid inside a dialog is always editable in Frappe: make it static and drop the row selectors
 	function show_as_read_only(grid) {
 		grid.static_rows = true;
 		grid.refresh();
-		// selector, row number, edit and column-settings cells; data cells carry a col-xs-N width
-		grid.wrapper.find(".data-row > .col").not("[class*='col-xs-']").hide();
-		// the last column takes the room the hidden cells leave
-		grid.wrapper.find(".data-row").each((i, row) => {
-			$(row)
-				.children("[class*='col-xs-']")
-				.last()
-				.css({ flex: "1 1 0", "max-width": "none" });
+		// selector, row number, edit and column-settings cells; only the data cells carry a data-fieldname
+		grid.wrapper.find(".data-row > .col").not("[data-fieldname]").hide();
+		grid.wrapper
+			.find(".form-grid-container, .form-grid")
+			.css({ "overflow-x": "hidden", "min-width": "0" });
+		grid.wrapper.find(".data-row").css({ width: "auto", "min-width": "0" });
+		grid.wrapper.find(".data-row > [data-fieldname]").each((i, cell) => {
+			const share = COLUMN_SHARES[cell.dataset.fieldname] || 1;
+			$(cell).css({
+				flex: `${share} 1 0`,
+				width: "auto",
+				"min-width": "0",
+				"max-width": "none",
+			});
 		});
 		grid.wrapper.find(".grid-footer").hide();
 	}

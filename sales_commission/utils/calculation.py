@@ -1,4 +1,3 @@
-from frappe import _
 from frappe.utils import flt
 
 from sales_commission.utils.history import SalesHistory
@@ -10,11 +9,6 @@ from sales_commission.utils.line_fields import (
 from sales_commission.utils.order_links import OrderLinks
 from sales_commission.utils.rates import RateResolver
 from sales_commission.utils.target_estimate import TargetMultipliers
-
-CART_NOTE = "Shopping Cart order"
-NOT_GRANTED_NOTE = "Grant Commission off"
-NO_RATE_NOTE = "No rate set"
-NO_FACTOR_NOTE = "No factor set"
 
 
 class LineCalculator:
@@ -33,16 +27,15 @@ class LineCalculator:
 		self.links = OrderLinks(doc)
 		self.multipliers = multipliers or TargetMultipliers(doc, enabled=not plain)
 		self.kept = []
-		self.factor = 1.0
 
 	def apply(self):
 		self.classify_lines()
-		self.factor = self.multipliers.for_line()
 		for row in self.rows:
+			factor = self.multipliers.for_line(row)
 			if any(row is kept for kept in self.kept):
-				self.follow_net_amount(row)
+				self.follow_net_amount(row, factor)
 			else:
-				set_line_amounts(row, self.factor)
+				set_line_amounts(row, factor)
 			row.target_multiplier = self.multipliers.describe(row)
 
 	def classify_lines(self):
@@ -52,10 +45,7 @@ class LineCalculator:
 				self.kept.append(row)
 				continue
 			clear_line(row)
-			reason = self.excluded_reason(row)
-			if reason:
-				row.commission_note = reason
-			elif not self.copy_from_order(row):
+			if not self.is_excluded(row) and not self.copy_from_order(row):
 				pending.append(row)
 		earlier = self.history.earlier_groups({r.item_group for r in pending})
 		for row in pending:
@@ -65,25 +55,20 @@ class LineCalculator:
 	def set_rate(self, row):
 		row.commission_percent = self.rates.get_percent(row.item_code)
 		row.commission_factor = self.rates.get_factor(row.commission_classification)
-		if not row.commission_percent:
-			row.commission_note = _(NO_RATE_NOTE)
-		elif not self.rates.has_factor(row.commission_classification):
-			row.commission_note = _(NO_FACTOR_NOTE)
 
-	def follow_net_amount(self, row):
+	def follow_net_amount(self, row, factor):
 		"""A stored line keeps its amount when only a cent fix separates it from the new value."""
 		for field, base in (("commission_amount", False), ("base_commission_amount", True)):
 			tolerance = 10 ** -row.precision(field) * max(len(self.rows), 1)
-			estimate = unrounded_commission(row, base) * self.factor
+			estimate = unrounded_commission(row, base) * factor
 			if abs(estimate - flt(row.get(field))) > tolerance:
 				row.set(field, flt(estimate, row.precision(field)))
 
-	def excluded_reason(self, row):
+	def is_excluded(self, row):
+		"""Lines without Grant Commission and Shopping Cart lines earn nothing."""
 		if not row.get("grant_commission"):
-			return _(NOT_GRANTED_NOTE)
-		if not self.plain and (self.links.is_cart_doc() or self.links.is_cart_line(row)):
-			return _(CART_NOTE)
-		return None
+			return True
+		return not self.plain and (self.links.is_cart_doc() or self.links.is_cart_line(row))
 
 	def copy_from_order(self, row):
 		"""An invoice line keeps the classification and % of its order line."""

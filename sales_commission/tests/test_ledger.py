@@ -1,7 +1,6 @@
 import json
 
 import frappe
-from frappe import _
 from frappe.utils import flt
 
 from sales_commission.tests import helpers as h
@@ -166,8 +165,17 @@ class TestLedgerAndSafety(h.CommissionTestCase):
 					"base_net_amount": 100,
 				}
 			],
+			"sales_team": [{"sales_person": h.make_sales_person(), "allocated_percentage": 100}],
 		}
 		return json.dumps(doc)
+
+	def test_preview_without_a_salesperson_works_out_nothing(self):
+		args = json.loads(self.preview_args(h.make_customer()))
+		args["sales_team"] = []
+		result = get_line_commission(json.dumps(args))
+		line = result["lines"][0]
+		self.assertEqual((line["commission_classification"], line["commission_amount"]), ("", 0))
+		self.assertEqual(result["total_commission_amount"], 0)
 
 	def test_preview_returns_lines_and_totals_worked_out_by_the_server(self):
 		result = get_line_commission(self.preview_args(h.make_customer()))
@@ -191,13 +199,11 @@ class TestLedgerAndSafety(h.CommissionTestCase):
 			with self.assertRaises(frappe.ValidationError):
 				get_line_commission(json.dumps(args))
 
-	def test_preview_explains_a_line_that_earns_nothing(self):
+	def test_preview_line_without_grant_commission_earns_nothing(self):
 		args = json.loads(self.preview_args(h.make_customer()))
 		args["items"][0]["grant_commission"] = 0
 		line = get_line_commission(json.dumps(args))["lines"][0]
-		self.assertEqual(
-			(line["commission_classification"], line["commission_note"]), ("", _("Grant Commission off"))
-		)
+		self.assertEqual((line["commission_classification"], line["commission_amount"]), ("", 0))
 
 	def test_preview_only_for_orders_and_invoices(self):
 		for bad in (self.preview_args(h.make_customer(), "Quotation"), json.dumps([1, 2])):

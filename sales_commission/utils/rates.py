@@ -48,9 +48,6 @@ class RateResolver:
 		"""The factor of a classification, 0 when Settings has no row for it."""
 		return self.factors.get(classification, 0.0)
 
-	def has_factor(self, classification):
-		return classification in self.factors
-
 	def get_percent(self, item_code):
 		"""The Item's % wins, else the first Sales Team row that has a rate."""
 		if item_code not in self.item_cache:

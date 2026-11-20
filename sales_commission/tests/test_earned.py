@@ -121,7 +121,8 @@ class TestEarnedOnPayment(h.CommissionTestCase):
 		item = h.make_item(h.make_group(), percent=10)
 		invoice = h.make_invoice(h.make_customer(), [(item, 1, 1000)])
 		p.pay(invoice, 1000)
-		self.assertEqual(flt(invoice.items[0].commission_amount), 100)
+		# no salesperson, no estimate and no ledger rows
+		self.assertEqual(flt(invoice.items[0].commission_amount), 0)
 		self.assertEqual(self.rows(invoice), [])
 
 	def test_foreign_advance_is_posted_at_the_payment_rate(self):

@@ -116,8 +116,12 @@ class TestCreditNotes(h.CommissionTestCase):
 		self.assertEqual(self.ytd(invoice), 133.34)
 
 	def test_catch_up_keeps_the_escalator_multiplier(self):
+		# dated before the invoice below, so it counts towards the target first
 		earlier = h.make_invoice(
-			h.make_customer(), [(h.make_item(self.group, percent=5), 1, 1000)], team=self.team
+			h.make_customer(),
+			[(h.make_item(self.group, percent=5), 1, 1000)],
+			team=self.team,
+			date=h.anchor_date(-10),
 		)
 		p.pay(earlier, 1000)
 		h.set_target(self.person, h.fiscal_year_of(h.ANCHOR), 500)
