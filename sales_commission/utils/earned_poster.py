@@ -104,8 +104,8 @@ class EarnedPoster(LedgerWriter):
 			source.copy_to(row)
 			shares = shares_of(source.rows)
 		else:
-			parts_of_sales = self.escalator.split(row, recognised)
-			shares = [(m, amount / recognised if recognised else 1.0) for m, amount in parts_of_sales]
+			self.escalator.set_fiscal_year(row)
+			shares = self.document_splits.shares(entry)
 		self.insert_parts(row, shares, recognised, exact_earned * rate)
 
 	def insert_parts(self, row, shares, recognised, exact_base):

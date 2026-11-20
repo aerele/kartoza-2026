@@ -57,7 +57,7 @@ def person_factor(doc, line, sales_person, multipliers):
 	"""A return follows the multiplier of the invoice line it takes back, anything else the person's own."""
 	if doc.get("is_return"):
 		return line_multiplier(line)
-	return multipliers.for_person(sales_person)
+	return multipliers.for_person(sales_person, line)
 
 
 def set_incentives(doc, multipliers=None):

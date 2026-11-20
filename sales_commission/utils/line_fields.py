@@ -8,7 +8,6 @@ def clear_line(row):
 	row.commission_amount = 0
 	row.base_commission_amount = 0
 	row.target_multiplier = ""
-	row.commission_note = ""
 
 
 def line_multiplier(row):

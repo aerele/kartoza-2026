@@ -99,13 +99,15 @@ class TestTargetEstimate(h.CommissionTestCase):
 		self.assertAlmostEqual(flt(order.base_total_commission_amount), 130)
 		self.assertAlmostEqual(sum(flt(r.incentives) for r in order.sales_team), 130)
 
-	def test_draft_is_escalated_when_saved_again_after_the_target_is_crossed(self):
+	def test_draft_is_escalated_when_saved_again_after_an_earlier_document_is_submitted(self):
 		self.target(1500)
+		draft_date = add_days(h.date_in(0, "04-01"), 10)
 		draft = h.make_invoice(
-			self.customer, [(self.item, 1, 1000)], team=self.team, date=self.next_date(), submit=False
+			self.customer, [(self.item, 1, 1000)], team=self.team, date=draft_date, submit=False
 		)
 		self.assertEqual(flt(draft.items[0].commission_amount), 100)
-		self.paid(2000)
+		# an unpaid invoice dated before the draft counts towards the target
+		h.make_invoice(self.customer, [(self.item, 1, 2000)], team=self.team, date=self.next_date())
 		draft.save()
 		self.assertEqual(flt(draft.items[0].commission_amount), 150)
 		self.assertEqual(flt(draft.sales_team[0].incentives), 150)

@@ -339,8 +339,8 @@ class TestSettingsChangedMidYear(ScenarioCase):
 		self.assertEqual(self.figures(first), [("Earned", 1, 1, 100)])
 		self.assertEqual(self.figures(second), [("Earned", 1, 1.5, 150)])
 
-		# made before the change but paid after it: its own factor of 1, the multiplier of the day it is paid
-		self.assertEqual(self.figures(self.paid(waiting)), [("Earned", 1, 2, 200)])
+		# submitted before the change but paid after it: its own factor of 1 and the split frozen on submit
+		self.assertEqual(self.figures(self.paid(waiting)), [("Earned", 1, 1.5, 150)])
 		# made after the change: factor 0.5 and multiplier 2
 		self.assertEqual(self.figures(self.paid(self.invoice())), [("Earned", 0.5, 2, 100)])
 		# a credit note of a row posted before the change takes back what that row earned
