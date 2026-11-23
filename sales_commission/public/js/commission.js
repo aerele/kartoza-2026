@@ -211,11 +211,19 @@
 					],
 				},
 				{ fieldtype: "Section Break" },
+				// a Currency field's options name the field that holds its currency
+				{
+					fieldtype: "Link",
+					fieldname: "currency",
+					options: "Currency",
+					default: frm.doc.currency,
+					hidden: 1,
+				},
 				{
 					fieldtype: "Currency",
 					fieldname: "total_commission_amount",
 					label: __("Total Commission Amount"),
-					options: frm.doc.currency,
+					options: "currency",
 					default: frm.doc.total_commission_amount,
 					read_only: 1,
 				},
@@ -224,7 +232,7 @@
 					fieldtype: "Currency",
 					fieldname: "base_total_commission_amount",
 					label: __("Total Commission Amount (Company Currency)"),
-					options: erpnext.get_currency(frm.doc.company),
+					options: "Company:company:default_currency",
 					default: frm.doc.base_total_commission_amount,
 					read_only: 1,
 				},
@@ -256,12 +264,9 @@
 		grid.wrapper.find(".data-row").css({ width: "auto", "min-width": "0" });
 		grid.wrapper.find(".data-row > [data-fieldname]").each((i, cell) => {
 			const share = COLUMN_SHARES[cell.dataset.fieldname] || 1;
-			$(cell).css({
-				flex: `${share} 1 0`,
-				width: "auto",
-				"min-width": "0",
-				"max-width": "none",
-			});
+			// important: Frappe v16 forces the last column's flex-grow with !important
+			cell.style.setProperty("flex", `${share} 1 0`, "important");
+			$(cell).css({ width: "auto", "min-width": "0", "max-width": "none" });
 		});
 		grid.wrapper.find(".grid-footer").hide();
 	}
