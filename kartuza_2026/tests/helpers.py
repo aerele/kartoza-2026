@@ -36,6 +36,7 @@ def anchor_date(offset=0):
 
 def ensure_test_environment():
 	"""Create (once) the ZAR test company, its VAT account, the fiscal years and the currencies."""
+	ensure_setup_fixtures()
 	for currency in ("ZAR", "USD", "EUR"):
 		frappe.db.set_value("Currency", currency, "enabled", 1)
 	if not frappe.db.exists("Company", COMPANY):
@@ -49,8 +50,9 @@ def ensure_test_environment():
 				"chart_of_accounts": "Standard",
 			}
 		).insert(ignore_permissions=True)
+	ensure_other_company()
 	ensure_fiscal_years()
-	ensure_employee_type()
+	ensure_default_accounts()
 	if not frappe.db.exists("Account", VAT):
 		frappe.get_doc(
 			{
@@ -63,14 +65,69 @@ def ensure_test_environment():
 			}
 		).insert(ignore_permissions=True)
 
+	ensure_employee_type()
+
+
+def ensure_other_company():
+	"""Some tests need a second company; a site that only has the test company gets one."""
+	if frappe.db.exists("Company", {"name": ("!=", COMPANY)}):
+		return
+	frappe.get_doc(
+		{
+			"doctype": "Company",
+			"company_name": "Commission Other Company",
+			"abbr": "_TCO",
+			"default_currency": "ZAR",
+			"country": "South Africa",
+			"chart_of_accounts": "Standard",
+		}
+	).insert(ignore_permissions=True)
+
+
+def ensure_default_accounts():
+	"""A company made outside the setup wizard has no default accounts."""
+	for field, account in (
+		("default_income_account", "Sales"),
+		("default_expense_account", "Cost of Goods Sold"),
+		("default_cash_account", "Cash"),
+		("round_off_account", "Round Off"),
+		("write_off_account", "Write Off"),
+		("exchange_gain_loss_account", "Exchange Gain/Loss"),
+	):
+		account = f"{account} - {ABBR}"
+		if not frappe.db.get_value("Company", COMPANY, field) and frappe.db.exists("Account", account):
+			frappe.db.set_value("Company", COMPANY, field, account)
+
+
+def ensure_setup_fixtures():
+	"""Root groups, genders, UOMs ... that the setup wizard creates; a site without a finished wizard lacks them."""
+	if frappe.db.exists("Item Group", "All Item Groups"):
+		return
+	from erpnext.setup.setup_wizard.operations.install_fixtures import install as install_erpnext
+	from frappe.desk.page.setup_wizard.install_fixtures import install as install_frappe
+
+	install_frappe()
+	install_erpnext("South Africa")
+	frappe.get_doc(
+		{
+			"doctype": "Price List",
+			"price_list_name": "Standard Selling",
+			"enabled": 1,
+			"selling": 1,
+			"currency": "ZAR",
+		}
+	).insert(ignore_permissions=True)
+	frappe.db.set_single_value("Selling Settings", "selling_price_list", "Standard Selling")
+
 
 def ensure_employee_type():
 	"""The kartoza app requires an Employee Type on every Employee."""
 	if frappe.db.exists("Employee Type", EMPLOYEE_TYPE):
 		return
-	frappe.get_doc({"doctype": "Employee Type", "employee_type_name": EMPLOYEE_TYPE}).insert(
-		ignore_permissions=True
-	)
+	payable = frappe.db.get_value("Company", COMPANY, "default_payable_account")
+	frappe.get_doc(
+		{"doctype": "Employee Type", "employee_type": EMPLOYEE_TYPE, "payroll_payable_account": payable}
+	).insert(ignore_permissions=True)
 
 
 def fiscal_year_of(date):
