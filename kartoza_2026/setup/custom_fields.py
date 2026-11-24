@@ -144,24 +144,34 @@ def with_module(custom_fields):
 	}
 
 
-def hide_standard_commission_section():
-	"""Hide ERPNext's Sales Partner commission section; only the app's own section shows."""
-	for doctype in ("Sales Order", "Sales Invoice"):
-		name = f"{doctype}-sales_team_section_break-hidden"
-		if frappe.db.get_value("Property Setter", name, "value") == "1":
-			continue
-		make_property_setter(doctype, "sales_team_section_break", "hidden", 1, "Check")
-		frappe.db.set_value("Property Setter", name, "module", MODULE)
+# Section holding the Sales Partner commission fields
+STANDARD_COMMISSION_SECTIONS = {
+	"Sales Order": "sales_team_section_break",
+	"Sales Invoice": "sales_team_section_break",
+}
+# ERPNext's own commission figures; the app works commission out itself
+STANDARD_COMMISSION_FIELDS = ("amount_eligible_for_commission", "commission_rate", "total_commission")
+
+
+def hide_standard_commission_fields():
+	"""Keep the Sales Partner field visible and hide only ERPNext's commission figures next to it."""
+	for doctype, section in STANDARD_COMMISSION_SECTIONS.items():
+		set_hidden(doctype, section, 0)
+		for fieldname in STANDARD_COMMISSION_FIELDS:
+			set_hidden(doctype, fieldname, 1)
+
+
+def set_hidden(doctype, fieldname, hidden):
+	make_property_setter(doctype, fieldname, "hidden", hidden, "Check")
+	frappe.db.set_value("Property Setter", f"{doctype}-{fieldname}-hidden", "module", MODULE)
 
 
 def show_sales_team_section():
 	"""Other apps hide the Sales Team section of orders and invoices; commission needs it visible."""
 	for doctype in ("Sales Order", "Sales Invoice"):
 		section = sales_team_section(doctype)
-		if not section:
-			continue
-		make_property_setter(doctype, section, "hidden", 0, "Check")
-		frappe.db.set_value("Property Setter", f"{doctype}-{section}-hidden", "module", MODULE)
+		if section:
+			set_hidden(doctype, section, 0)
 
 
 def sales_team_section(doctype):
