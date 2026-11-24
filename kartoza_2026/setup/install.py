@@ -6,12 +6,14 @@ from kartoza_2026.setup.custom_fields import (
 	hide_standard_commission_section,
 	make_target_distribution_optional,
 	remove_old_fields,
+	show_sales_team_section,
 )
 
 
 def after_install():
 	create_commission_fields()
 	hide_standard_commission_section()
+	show_sales_team_section()
 	make_target_distribution_optional()
 	hide_sales_team_commission_rate()
 	save_default_settings()

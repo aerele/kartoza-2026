@@ -154,6 +154,27 @@ def hide_standard_commission_section():
 		frappe.db.set_value("Property Setter", name, "module", MODULE)
 
 
+def show_sales_team_section():
+	"""Other apps hide the Sales Team section of orders and invoices; commission needs it visible."""
+	for doctype in ("Sales Order", "Sales Invoice"):
+		section = sales_team_section(doctype)
+		if not section:
+			continue
+		make_property_setter(doctype, section, "hidden", 0, "Check")
+		frappe.db.set_value("Property Setter", f"{doctype}-{section}-hidden", "module", MODULE)
+
+
+def sales_team_section(doctype):
+	"""The section break that holds the Sales Team table (its field name differs between versions)."""
+	section = None
+	for field in frappe.get_meta(doctype).fields:
+		if field.fieldname == "sales_team":
+			return section
+		if field.fieldtype == "Section Break":
+			section = field.fieldname
+	return None
+
+
 def make_target_distribution_optional():
 	"""Sales Person Targets: the annual target needs no Monthly Distribution."""
 	name = "Target Detail-distribution_id-reqd"
