@@ -275,6 +275,14 @@ doc_events = {
 
 # ignore_links_on_delete = ["Communication", "ToDo"]
 
+override_doctype_dashboards = {
+	"Sales Order": "kartoza_2026.utils.dashboards.order_or_invoice",
+	"Sales Invoice": "kartoza_2026.utils.dashboards.order_or_invoice",
+	"Payment Entry": "kartoza_2026.utils.dashboards.payment",
+	"Journal Entry": "kartoza_2026.utils.dashboards.payment",
+	"Salary Slip": "kartoza_2026.utils.dashboards.salary_slip",
+}
+
 override_doctype_class = {
 	"Salary Slip": "kartoza_2026.overrides.salary_slip.CommissionSalarySlip",
 }

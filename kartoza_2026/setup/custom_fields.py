@@ -76,7 +76,7 @@ def header_fields(insert_after):
 	totals = {"read_only": 1, "no_copy": 1, "print_hide": 1}
 	return [
 		{
-			"fieldname": "kartoza_2026_section",
+			"fieldname": "sales_commission_section",
 			"label": "Sales Commission",
 			"fieldtype": "Section Break",
 			"insert_after": insert_after,
@@ -85,7 +85,7 @@ def header_fields(insert_after):
 		{
 			"fieldname": "commission_column_break",
 			"fieldtype": "Column Break",
-			"insert_after": "kartoza_2026_section",
+			"insert_after": "sales_commission_section",
 		},
 		{
 			**totals,
@@ -161,6 +161,27 @@ def hide_standard_commission_section():
 		frappe.db.set_value("Property Setter", name, "module", MODULE)
 
 
+def show_sales_team_section():
+	"""Other apps hide the Sales Team section of orders and invoices; commission needs it visible."""
+	for doctype in ("Sales Order", "Sales Invoice"):
+		section = sales_team_section(doctype)
+		if not section:
+			continue
+		make_property_setter(doctype, section, "hidden", 0, "Check")
+		frappe.db.set_value("Property Setter", f"{doctype}-{section}-hidden", "module", MODULE)
+
+
+def sales_team_section(doctype):
+	"""The section break that holds the Sales Team table (its field name differs between versions)."""
+	section = None
+	for field in frappe.get_meta(doctype).fields:
+		if field.fieldname == "sales_team":
+			return section
+		if field.fieldtype == "Section Break":
+			section = field.fieldname
+	return None
+
+
 def make_target_distribution_optional():
 	"""Sales Person Targets: the annual target needs no Monthly Distribution."""
 	name = "Target Detail-distribution_id-reqd"
@@ -181,7 +202,13 @@ def hide_sales_team_commission_rate():
 		frappe.db.set_value("Property Setter", name, "module", MODULE)
 
 
-REMOVED_FIELDS = {"Sales Order Item": ["commission_note"], "Sales Invoice Item": ["commission_note"]}
+# The header section keeps its field name when the app is renamed; copies made under the app name are deleted
+REMOVED_FIELDS = {
+	"Sales Order Item": ["commission_note"],
+	"Sales Invoice Item": ["commission_note"],
+	"Sales Order": ["kartuza_2026_section", "kartoza_2026_section"],
+	"Sales Invoice": ["kartuza_2026_section", "kartoza_2026_section"],
+}
 
 
 def remove_old_fields():
