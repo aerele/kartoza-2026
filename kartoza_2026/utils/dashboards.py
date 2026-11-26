@@ -5,6 +5,8 @@ LEDGER = "Commission Ledger"
 
 def add_commission_ledger(data, fieldname):
 	"""Show the Commission Ledger rows of the document in its Connections tab."""
+	# without a fieldname (Salary Slip has no dashboard of its own) the form never loads the counts
+	data.setdefault("fieldname", fieldname)
 	data.setdefault("non_standard_fieldnames", {})[LEDGER] = fieldname
 	data.setdefault("transactions", []).append({"label": _("Commission"), "items": [LEDGER]})
 	return data
